@@ -1,23 +1,32 @@
 import { DungeonGenerator } from './dungeon';
+import { generateDungeon } from './generator';
 
-const svgElement = document.getElementById(
-  'dungeon-svg'
-) as SVGSVGElement | null;
+const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
 
 if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
 }
 
-const dungeon = new DungeonGenerator();
+const dungeonGenerator = new DungeonGenerator();
 
-// Add rooms
-const room1 = dungeon.addRoom('Entrance', 100, 100);
-const room2 = dungeon.addRoom('Treasure', 300, 300);
-const room3 = dungeon.addRoom('Corridor', 200, 200);
+// Generate a dungeon
+const config = {
+  numRooms: 15, // Number of rooms
+  dungeonWidth: 800, // Canvas width
+  dungeonHeight: 600, // Canvas height
+  minConnections: 1, // Minimum connections per room
+  maxConnections: 3, // Maximum connections per room
+};
 
-// Add links
-dungeon.addLink(room1.id, room2.id, 'door');
-dungeon.addLink(room2.id, room3.id, 'secret tunnel');
+const { rooms, links } = generateDungeon(config);
 
-// Render
-dungeon.render(svgElement);
+rooms.forEach((room) => dungeonGenerator.addRoom(room.name, room.x, room.y));
+links.forEach((link) => {
+  const sourceId =
+    typeof link.source === 'string' ? link.source : link.source.id;
+  const targetId =
+    typeof link.target === 'string' ? link.target : link.target.id;
+  dungeonGenerator.addLink(sourceId, targetId, link.type);
+});
+
+dungeonGenerator.render(svgElement);
