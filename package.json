@@ -3,10 +3,11 @@
   "module": "index.html",
   "type": "module",
   "scripts": {
-    "dev": "bun run server.ts"
+    "dev": "bun --watch run server.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/d3": "^7.4.3"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

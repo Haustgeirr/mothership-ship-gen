@@ -1,15 +1,21 @@
 {
   "compilerOptions": {
     "module": "ESNext",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "lib": ["DOM", "ESNext"],
     "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "baseUrl": "./",
     "paths": {
       "*": ["src/*"]
     },
     "allowSyntheticDefaultImports": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "node_modules/@types"],
   "exclude": ["node_modules"]
 }
