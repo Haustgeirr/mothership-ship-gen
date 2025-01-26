@@ -3,17 +3,19 @@
   "module": "index.html",
   "type": "module",
   "scripts": {
-    "dev": "bun --watch run server.ts",
-    "build": "bun build src/main.ts --outdir=dist"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/d3": "^7.4.3"
+    "@types/d3": "^7.4.3",
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "d3": "^7.9.0"
+    "d3": "^7.9.0",
+    "vite": "^6.0.11"
   }
 }

@@ -12,8 +12,8 @@ const dungeonGenerator = new DungeonGenerator();
 // Generate a dungeon
 const config = {
   numRooms: 15, // Number of rooms
-  dungeonWidth: 800, // Canvas width
-  dungeonHeight: 600, // Canvas height
+  dungeonWidth: 8, // Canvas width
+  dungeonHeight: 6, // Canvas height
   minConnections: 1, // Minimum connections per room
   maxConnections: 3, // Maximum connections per room
 };

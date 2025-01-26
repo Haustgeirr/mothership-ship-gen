@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
+    "target": "esnext",
     "module": "ESNext",
     "moduleDetection": "force",
     "moduleResolution": "bundler",
+    "downlevelIteration": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "lib": ["DOM", "ESNext"],
+    "lib": ["ESNext", "DOM"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -17,5 +19,5 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*", "node_modules/@types"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

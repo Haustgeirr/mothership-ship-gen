@@ -10,17 +10,29 @@ interface BranchingConfig {
   maxBranches: number; // Maximum additional branches per room
 }
 
-// Generate random rooms
+// Generate random rooms with integer coordinates and no overlap
 export function generateRooms(config: DungeonGenerationConfig): RoomNode[] {
   const { numRooms, dungeonWidth, dungeonHeight } = config;
   const rooms: RoomNode[] = [];
+  const occupiedPositions = new Set<string>();
 
   for (let i = 0; i < numRooms; i++) {
+    let x: number, y: number;
+
+    // Generate unique integer coordinates for the room
+    do {
+      x = Math.floor(Math.random() * dungeonWidth);
+      y = Math.floor(Math.random() * dungeonHeight);
+    } while (occupiedPositions.has(`${x},${y}`));
+
+    // Mark the position as occupied
+    occupiedPositions.add(`${x},${y}`);
+
     const room: RoomNode = {
       id: `room-${i}`,
       name: `Room ${i}`,
-      x: Math.random() * dungeonWidth,
-      y: Math.random() * dungeonHeight,
+      x,
+      y,
     };
     rooms.push(room);
   }
