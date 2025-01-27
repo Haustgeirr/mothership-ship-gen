@@ -1,3 +1,8 @@
+// TODO: add secondary links back in
+// TODO: add add disconnected rooms (links via secondary only, and rarely not at all SPACE WAAALK)
+// TODO: add dice rolls for number of rooms and secondary links per room
+// TODO: add room names, purpose and descriptions
+
 import type { RoomNode, RoomLink } from './dungeon';
 
 interface DungeonGenerationConfig {
