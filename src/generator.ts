@@ -8,7 +8,34 @@ interface DungeonGenerationConfig {
   directionalBias?: number; // 0-1: How likely to continue in the same direction
 }
 
-// Generate random rooms with integer coordinates and no overlap
+interface Position {
+  x: number;
+  y: number;
+}
+
+// Helper functions at the top level
+function createRoom(id: number, x: number, y: number): RoomNode {
+  return {
+    id: `room-${id}`,
+    name: `Room ${id}`,
+    x,
+    y,
+  };
+}
+
+function createLink(source: RoomNode, target: RoomNode): RoomLink {
+  return {
+    source,
+    target,
+    type: 'door',
+  };
+}
+
+function getPositionKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+// Main generation function refactored
 export function generateRooms(config: DungeonGenerationConfig): {
   rooms: RoomNode[];
   links: RoomLink[];
@@ -21,172 +48,113 @@ export function generateRooms(config: DungeonGenerationConfig): {
     directionalBias = 0.7,
   } = config;
 
-  // Add timeout constants at the start of the function
-  const startTime = Date.now();
-  const TIMEOUT_MS = 1500; // 1.5 second timeout for room generation
-
-  console.log('Starting dungeon generation with config:', {
-    numRooms,
-    dungeonWidth,
-    dungeonHeight,
-    branchingFactor,
-    directionalBias,
-  });
-
-  // Ensure we have at least 2 main path rooms or 1/3 of total rooms
-  const mainPathRooms = Math.max(
-    2,
-    Math.floor(numRooms * Math.min(0.33, 1 - branchingFactor))
-  );
-  const branchRooms = numRooms - mainPathRooms;
-
-  console.log(
-    `Planning ${mainPathRooms} rooms for main path, ${branchRooms} for branches`
-  );
-
   const rooms: RoomNode[] = [];
   const links: RoomLink[] = [];
   const occupiedPositions = new Map<string, RoomNode>();
-  const getPositionKey = (x: number, y: number) => `${x},${y}`;
 
   // Helper to check if a position is occupied
-  const isPositionOccupied = (x: number, y: number): boolean => {
-    return occupiedPositions.has(getPositionKey(x, y));
-  };
+  const isPositionOccupied = (x: number, y: number): boolean =>
+    occupiedPositions.has(getPositionKey(x, y));
 
   // Helper to add a room and track its position
-  const addRoomToGraph = (room: RoomNode): void => {
+  const addRoom = (x: number, y: number): RoomNode => {
+    const room = createRoom(rooms.length, x, y);
     rooms.push(room);
-    occupiedPositions.set(getPositionKey(room.x, room.y), room);
+    occupiedPositions.set(getPositionKey(x, y), room);
+    return room;
   };
-
-  // Start with center room
-  const centerX = Math.floor(dungeonWidth / 2);
-  const centerY = Math.floor(dungeonHeight / 2);
-  const firstRoom: RoomNode = {
-    id: 'room-0',
-    name: 'Room 0',
-    x: centerX,
-    y: centerY,
-  };
-  addRoomToGraph(firstRoom);
 
   // Helper to get valid adjacent positions
   const getValidAdjacentPositions = (
-    x: number,
-    y: number,
-    lastDirection?: [number, number],
+    pos: Position,
+    lastDirection?: Position,
     isMainPath: boolean = false
-  ): [number, number][] => {
-    const adjacent: [number, number][] = [
-      [x + 1, y], // East
-      [x - 1, y], // West
-      [x, y + 1], // South
-      [x, y - 1], // North
+  ): Position[] => {
+    const directions: Position[] = [
+      { x: 0, y: -1 }, // North (prioritized)
+      { x: 0, y: 1 }, // South (prioritized)
+      { x: 1, y: 0 }, // East
+      { x: -1, y: 0 }, // West
     ];
 
-    // Filter valid positions
-    return adjacent.filter(([newX, newY]) => {
-      // Check bounds
-      if (
-        newX < 0 ||
-        newX >= dungeonWidth ||
-        newY < 0 ||
-        newY >= dungeonHeight
-      ) {
-        return false;
-      }
+    return directions
+      .map((dir) => ({ x: pos.x + dir.x, y: pos.y + dir.y }))
+      .filter((newPos) => {
+        // Check bounds and occupation
+        if (
+          newPos.x < 0 ||
+          newPos.x >= dungeonWidth ||
+          newPos.y < 0 ||
+          newPos.y >= dungeonHeight ||
+          isPositionOccupied(newPos.x, newPos.y)
+        ) {
+          return false;
+        }
 
-      // Check if position is occupied
-      if (isPositionOccupied(newX, newY)) {
-        return false;
-      }
+        // For main path, apply directional bias
+        if (isMainPath && lastDirection && Math.random() < directionalBias) {
+          return (
+            newPos.x - pos.x === lastDirection.x &&
+            newPos.y - pos.y === lastDirection.y
+          );
+        }
 
-      // For main path, check directional bias
-      if (isMainPath && lastDirection && Math.random() < directionalBias) {
-        const [dx, dy] = lastDirection;
-        return (
-          (newX - x === dx && newY - y === dy) ||
-          (Math.abs(newX - x) === Math.abs(dx) &&
-            Math.abs(newY - y) === Math.abs(dy))
-        );
-      }
+        // Check for valid connections
+        const adjacentCount = Array.from(occupiedPositions.values()).filter(
+          (room) =>
+            (Math.abs(room.x - newPos.x) === 1 && room.y === newPos.y) ||
+            (Math.abs(room.y - newPos.y) === 1 && room.x === newPos.x)
+        ).length;
 
-      // Check for valid connections
-      const adjacentRooms = Array.from(occupiedPositions.values()).filter(
-        (room) =>
-          (Math.abs(room.x - newX) === 1 && room.y === newY) ||
-          (Math.abs(room.y - newY) === 1 && room.x === newX)
-      );
-
-      return isMainPath
-        ? adjacentRooms.length <= 1
-        : adjacentRooms.length === 1;
-    });
+        return isMainPath ? adjacentCount <= 1 : adjacentCount === 1;
+      });
   };
 
-  // Generate main path first
-  let lastDirection: [number, number] | undefined;
-  let currentRoom = firstRoom;
+  // Generate main path
+  const mainPathRooms = Math.max(
+    2,
+    Math.floor(numRooms * (1 - branchingFactor))
+  );
+  let currentRoom = addRoom(
+    Math.floor(dungeonWidth / 2),
+    Math.floor(dungeonHeight * 0.25) // Start in the upper quarter of the dungeon
+  );
+  let lastDirection: Position | undefined;
 
   for (let i = 1; i < mainPathRooms; i++) {
     const validPositions = getValidAdjacentPositions(
-      currentRoom.x,
-      currentRoom.y,
+      currentRoom,
       lastDirection,
       true
     );
 
-    if (validPositions.length === 0) {
-      break;
-    }
+    if (validPositions.length === 0) break;
 
-    const [newX, newY] = validPositions[0];
-    const room: RoomNode = {
-      id: `room-${i}`,
-      name: `Room ${i}`,
-      x: newX,
-      y: newY,
+    const newPos = validPositions[0];
+    const newRoom = addRoom(newPos.x, newPos.y);
+    links.push(createLink(currentRoom, newRoom));
+
+    lastDirection = {
+      x: newRoom.x - currentRoom.x,
+      y: newRoom.y - currentRoom.y,
     };
-
-    addRoomToGraph(room);
-    links.push({
-      source: currentRoom,
-      target: room,
-      type: 'door',
-    });
-
-    lastDirection = [newX - currentRoom.x, newY - currentRoom.y];
-    currentRoom = room;
+    currentRoom = newRoom;
   }
 
-  // Add branch rooms
-  let branchId = rooms.length;
+  // Generate branch rooms
   while (rooms.length < numRooms) {
     const sourceRoom = rooms[Math.floor(Math.random() * rooms.length)];
     const validPositions = getValidAdjacentPositions(
-      sourceRoom.x,
-      sourceRoom.y,
+      sourceRoom,
       undefined,
       false
     );
 
     if (validPositions.length === 0) continue;
 
-    const [newX, newY] = validPositions[0];
-    const room: RoomNode = {
-      id: `room-${branchId++}`,
-      name: `Room ${branchId}`,
-      x: newX,
-      y: newY,
-    };
-
-    addRoomToGraph(room);
-    links.push({
-      source: sourceRoom,
-      target: room,
-      type: 'door',
-    });
+    const newPos = validPositions[0];
+    const newRoom = addRoom(newPos.x, newPos.y);
+    links.push(createLink(sourceRoom, newRoom));
   }
 
   return { rooms, links };
