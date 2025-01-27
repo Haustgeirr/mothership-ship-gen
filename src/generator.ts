@@ -9,7 +9,10 @@ interface DungeonGenerationConfig {
 }
 
 // Generate random rooms with integer coordinates and no overlap
-export function generateRooms(config: DungeonGenerationConfig): RoomNode[] {
+export function generateRooms(config: DungeonGenerationConfig): {
+  rooms: RoomNode[];
+  links: RoomLink[];
+} {
   const {
     numRooms,
     dungeonWidth,
@@ -42,217 +45,125 @@ export function generateRooms(config: DungeonGenerationConfig): RoomNode[] {
   );
 
   const rooms: RoomNode[] = [];
-  const occupiedPositions = new Set<string>();
-  const roomDirections = new Map<string, [number, number]>();
+  const links: RoomLink[] = [];
+  const occupiedPositions = new Map<string, RoomNode>();
+  const getPositionKey = (x: number, y: number) => `${x},${y}`;
 
-  // Start with a room in the center
+  // Helper to check if a position is occupied
+  const isPositionOccupied = (x: number, y: number): boolean => {
+    return occupiedPositions.has(getPositionKey(x, y));
+  };
+
+  // Helper to add a room and track its position
+  const addRoomToGraph = (room: RoomNode): void => {
+    rooms.push(room);
+    occupiedPositions.set(getPositionKey(room.x, room.y), room);
+  };
+
+  // Start with center room
   const centerX = Math.floor(dungeonWidth / 2);
   const centerY = Math.floor(dungeonHeight / 2);
-
   const firstRoom: RoomNode = {
-    id: `room-0`,
-    name: `Room 0`,
+    id: 'room-0',
+    name: 'Room 0',
     x: centerX,
     y: centerY,
   };
-  rooms.push(firstRoom);
-  occupiedPositions.add(`${centerX},${centerY}`);
+  addRoomToGraph(firstRoom);
 
-  // Helper to get valid adjacent positions with directional bias
+  // Helper to get valid adjacent positions
   const getValidAdjacentPositions = (
     x: number,
     y: number,
     lastDirection?: [number, number],
     isMainPath: boolean = false
   ): [number, number][] => {
-    let adjacent: [number, number][] = [
-      [x + 1, y],
-      [x - 1, y],
-      [x, y + 1],
-      [x, y - 1],
+    const adjacent: [number, number][] = [
+      [x + 1, y], // East
+      [x - 1, y], // West
+      [x, y + 1], // South
+      [x, y - 1], // North
     ];
 
-    // For main path, try to maintain direction but be less strict
-    if (isMainPath && lastDirection) {
-      const [dx, dy] = lastDirection;
-      if (Math.random() < directionalBias) {
-        // Prioritize but don't limit to these directions
-        adjacent.sort((a, b) => {
-          const aIsPreferred =
-            (a[0] === x + dx && a[1] === y + dy) ||
-            (a[0] === x + dy && a[1] === y + dx) ||
-            (a[0] === x - dy && a[1] === y - dx);
-          const bIsPreferred =
-            (b[0] === x + dx && b[1] === y + dy) ||
-            (b[0] === x + dy && b[1] === y + dx) ||
-            (b[0] === x - dy && b[1] === y - dx);
-          return bIsPreferred ? 1 : aIsPreferred ? -1 : 0;
-        });
+    // Filter valid positions
+    return adjacent.filter(([newX, newY]) => {
+      // Check bounds
+      if (
+        newX < 0 ||
+        newX >= dungeonWidth ||
+        newY < 0 ||
+        newY >= dungeonHeight
+      ) {
+        return false;
       }
-      console.log(
-        `Main path directions from (${x}, ${y}):`,
-        adjacent.map(([nx, ny]) => `(${nx}, ${ny})`)
-      );
-    }
 
-    const validPositions = adjacent.filter(([newX, newY]) => {
-      if (!isValidPosition(newX, newY)) return false;
+      // Check if position is occupied
+      if (isPositionOccupied(newX, newY)) {
+        return false;
+      }
 
-      const neighborCount = countNeighbors(newX, newY);
-      if (isMainPath) {
-        // Allow up to one neighbor for main path
-        return neighborCount <= 1;
-      } else {
-        // For branches, allow up to two neighbors if at least one is a branch
-        const neighbors = getNeighborRooms(newX, newY);
-        const branchNeighbors = neighbors.filter((n) =>
-          n.id.startsWith('branch-')
-        );
+      // For main path, check directional bias
+      if (isMainPath && lastDirection && Math.random() < directionalBias) {
+        const [dx, dy] = lastDirection;
         return (
-          neighborCount <= 2 &&
-          (branchNeighbors.length > 0 || neighborCount === 1)
+          (newX - x === dx && newY - y === dy) ||
+          (Math.abs(newX - x) === Math.abs(dx) &&
+            Math.abs(newY - y) === Math.abs(dy))
         );
       }
+
+      // Check for valid connections
+      const adjacentRooms = Array.from(occupiedPositions.values()).filter(
+        (room) =>
+          (Math.abs(room.x - newX) === 1 && room.y === newY) ||
+          (Math.abs(room.y - newY) === 1 && room.x === newX)
+      );
+
+      return isMainPath
+        ? adjacentRooms.length <= 1
+        : adjacentRooms.length === 1;
     });
-
-    console.log(
-      `Found ${validPositions.length} valid positions from (${x}, ${y})`,
-      isMainPath ? '(main path)' : '(branch)'
-    );
-
-    return validPositions;
   };
 
-  // Helper to check if a position is valid
-  const isValidPosition = (x: number, y: number): boolean => {
-    return (
-      x >= 0 &&
-      x < dungeonWidth &&
-      y >= 0 &&
-      y < dungeonHeight &&
-      !occupiedPositions.has(`${x},${y}`)
-    );
-  };
+  // Generate main path first
+  let lastDirection: [number, number] | undefined;
+  let currentRoom = firstRoom;
 
-  // Helper to count existing neighbors
-  const countNeighbors = (x: number, y: number): number => {
-    return [
-      [x + 1, y],
-      [x - 1, y],
-      [x, y + 1],
-      [x, y - 1],
-    ].filter(([nx, ny]) => occupiedPositions.has(`${nx},${ny}`)).length;
-  };
-
-  // Add helper to get neighbor rooms
-  const getNeighborRooms = (x: number, y: number): RoomNode[] => {
-    return rooms.filter(
-      (room) =>
-        (Math.abs(room.x - x) === 1 && room.y === y) ||
-        (Math.abs(room.y - y) === 1 && room.x === x)
-    );
-  };
-
-  // Move isTimedOut inside the function scope
-  const isTimedOut = () => Date.now() - startTime > TIMEOUT_MS;
-
-  // Phase 1: Generate main path
-  console.log('Phase 1: Generating main path...');
-  let mainPathRetries = 0;
-  const MAX_MAIN_PATH_RETRIES = 50;
-  let lastMainPathDirection: [number, number] | undefined;
-
-  for (
-    let i = 1;
-    i < mainPathRooms && mainPathRetries < MAX_MAIN_PATH_RETRIES;
-    i++
-  ) {
-    if (isTimedOut()) {
-      console.warn('Room generation timed out during main path');
-      return rooms;
-    }
-    const sourceRoom = rooms[rooms.length - 1];
-
+  for (let i = 1; i < mainPathRooms; i++) {
     const validPositions = getValidAdjacentPositions(
-      sourceRoom.x,
-      sourceRoom.y,
-      lastMainPathDirection,
+      currentRoom.x,
+      currentRoom.y,
+      lastDirection,
       true
     );
 
     if (validPositions.length === 0) {
-      mainPathRetries++;
-      console.log(
-        `Main path retry ${mainPathRetries}/${MAX_MAIN_PATH_RETRIES} - No valid positions from room ${sourceRoom.id}`
-      );
-      if (mainPathRetries >= MAX_MAIN_PATH_RETRIES) {
-        console.log('Main path generation failed - too many retries');
-        break;
-      }
-      continue;
+      break;
     }
 
-    mainPathRetries = 0;
-    const [x, y] = validPositions[0];
-    lastMainPathDirection = [x - sourceRoom.x, y - sourceRoom.y];
-
-    console.log(
-      `Added main path room ${i} at (${x}, ${y}), direction: (${lastMainPathDirection[0]}, ${lastMainPathDirection[1]})`
-    );
-
-    occupiedPositions.add(`${x},${y}`);
+    const [newX, newY] = validPositions[0];
     const room: RoomNode = {
       id: `room-${i}`,
       name: `Room ${i}`,
-      x,
-      y,
+      x: newX,
+      y: newY,
     };
-    rooms.push(room);
+
+    addRoomToGraph(room);
+    links.push({
+      source: currentRoom,
+      target: room,
+      type: 'door',
+    });
+
+    lastDirection = [newX - currentRoom.x, newY - currentRoom.y];
+    currentRoom = room;
   }
 
-  console.log(`Main path complete with ${rooms.length} rooms`);
-
-  // Phase 2: Add branches
-  console.log('Phase 2: Adding branches...');
-  let branchRetries = 0;
-  const MAX_BRANCH_RETRIES = 50;
-  const targetRooms = numRooms;
-  let branchCount = 0;
-
-  while (rooms.length < targetRooms && branchRetries < MAX_BRANCH_RETRIES) {
-    if (isTimedOut()) {
-      console.warn('Room generation timed out during branching');
-      return rooms;
-    }
-    // Prioritize rooms with fewer neighbors for branching
-    const candidates = rooms
-      .slice(0, Math.floor(rooms.length * 0.75))
-      .map((room) => ({
-        room,
-        neighbors: countNeighbors(room.x, room.y),
-      }))
-      .filter(({ neighbors }) => neighbors < 4) // Only consider rooms with space to branch
-      .sort((a, b) => a.neighbors - b.neighbors);
-
-    if (candidates.length === 0) {
-      branchRetries++;
-      console.log(
-        `Branch retry ${branchRetries}/${MAX_BRANCH_RETRIES} - No valid branch points found`
-      );
-      if (branchRetries >= MAX_BRANCH_RETRIES) {
-        console.log('Branch generation failed - dungeon may be too dense');
-        break;
-      }
-      continue;
-    }
-
-    // Pick from the best candidates (rooms with fewest neighbors)
-    const bestCandidates = candidates.filter(
-      (c) => c.neighbors === candidates[0].neighbors
-    );
-    const sourceRoom =
-      bestCandidates[Math.floor(Math.random() * bestCandidates.length)].room;
-
+  // Add branch rooms
+  let branchId = rooms.length;
+  while (rooms.length < numRooms) {
+    const sourceRoom = rooms[Math.floor(Math.random() * rooms.length)];
     const validPositions = getValidAdjacentPositions(
       sourceRoom.x,
       sourceRoom.y,
@@ -260,135 +171,25 @@ export function generateRooms(config: DungeonGenerationConfig): RoomNode[] {
       false
     );
 
-    if (validPositions.length === 0) {
-      branchRetries++;
-      continue;
-    }
+    if (validPositions.length === 0) continue;
 
-    const [x, y] =
-      validPositions[Math.floor(Math.random() * validPositions.length)];
-    branchCount++;
-
-    console.log(
-      `Added branch room ${branchCount} at (${x}, ${y}) from room ${sourceRoom.id}`
-    );
-
-    occupiedPositions.add(`${x},${y}`);
+    const [newX, newY] = validPositions[0];
     const room: RoomNode = {
-      id: `branch-${branchCount}`, // Mark as branch room
-      name: `Branch ${branchCount}`,
-      x,
-      y,
+      id: `room-${branchId++}`,
+      name: `Room ${branchId}`,
+      x: newX,
+      y: newY,
     };
-    rooms.push(room);
-    branchRetries = 0;
-  }
 
-  console.log(`Generation complete with ${rooms.length}/${numRooms} rooms`);
-
-  if (rooms.length < numRooms) {
-    console.warn(
-      `Could not generate all requested rooms. Generated ${rooms.length}/${numRooms}`
-    );
-  }
-
-  return rooms;
-}
-
-// Generate links between rooms
-export function generateLinks(
-  rooms: RoomNode[],
-  config: {
-    minConnections: number;
-    maxConnections: number;
-  }
-): RoomLink[] {
-  const { minConnections, maxConnections } = config;
-  console.log('Generating links with config:', {
-    minConnections,
-    maxConnections,
-  });
-
-  const links: RoomLink[] = [];
-  const connectedPairs = new Set<string>();
-
-  const pairKey = (source: string, target: string) =>
-    source < target ? `${source}-${target}` : `${target}-${source}`;
-
-  // First, connect adjacent rooms to ensure basic connectivity
-  console.log('Connecting adjacent rooms...');
-  rooms.forEach((room) => {
-    const neighbors = rooms.filter(
-      (other) =>
-        other.id !== room.id &&
-        Math.abs(other.x - room.x) + Math.abs(other.y - room.y) === 1
-    );
-
-    neighbors.forEach((neighbor) => {
-      const key = pairKey(room.id, neighbor.id);
-      if (!connectedPairs.has(key)) {
-        links.push({
-          source: room.id,
-          target: neighbor.id,
-          type: 'door',
-        });
-        connectedPairs.add(key);
-      }
+    addRoomToGraph(room);
+    links.push({
+      source: sourceRoom,
+      target: room,
+      type: 'door',
     });
-  });
+  }
 
-  console.log(`Created ${links.length} adjacent room connections`);
-
-  // Then add additional connections if needed
-  rooms.forEach((room) => {
-    const currentConnections = links.filter(
-      (link) => link.source === room.id || link.target === room.id
-    ).length;
-
-    // Only add connections if we're below minimum
-    if (currentConnections < minConnections) {
-      const connectionsNeeded = minConnections - currentConnections;
-      console.log(
-        `Room ${room.id} needs ${connectionsNeeded} more connections to meet minimum`
-      );
-
-      // Find nearby unconnected rooms
-      const potentialTargets = rooms
-        .filter((other) => {
-          if (other.id === room.id) return false;
-          const distance =
-            Math.abs(other.x - room.x) + Math.abs(other.y - room.y);
-          return (
-            distance <= 2 && !connectedPairs.has(pairKey(room.id, other.id))
-          );
-        })
-        .sort((a, b) => {
-          const distA = Math.abs(a.x - room.x) + Math.abs(a.y - room.y);
-          const distB = Math.abs(b.x - room.x) + Math.abs(b.y - room.y);
-          return distA - distB;
-        });
-
-      for (
-        let i = 0;
-        i < connectionsNeeded && i < potentialTargets.length;
-        i++
-      ) {
-        const target = potentialTargets[i];
-        const key = pairKey(room.id, target.id);
-        if (!connectedPairs.has(key)) {
-          links.push({
-            source: room.id,
-            target: target.id,
-            type: Math.random() < 0.7 ? 'door' : 'secret tunnel',
-          });
-          connectedPairs.add(key);
-        }
-      }
-    }
-  });
-
-  console.log(`Final link count: ${links.length}`);
-  return links;
+  return { rooms, links };
 }
 
 // Full dungeon generation
@@ -423,7 +224,7 @@ export function generateDungeon(config: {
   const TIMEOUT_MS = 2000; // 2 second timeout
 
   try {
-    const rooms = generateRooms({
+    const { rooms, links } = generateRooms({
       numRooms,
       dungeonWidth,
       dungeonHeight,
@@ -431,29 +232,101 @@ export function generateDungeon(config: {
       directionalBias,
     });
 
+    // Add validation before logging
+    const validateRoomConnections = (
+      rooms: RoomNode[],
+      links: RoomLink[]
+    ): void => {
+      // Verify each link connects to valid rooms
+      links.forEach((link, index) => {
+        const sourceExists = rooms.some((r) => r.id === link.source.id);
+        const targetExists = rooms.some((r) => r.id === link.target.id);
+
+        if (!sourceExists || !targetExists) {
+          console.error(`Invalid link ${index}:`, {
+            source: link.source.id,
+            target: link.target.id,
+            sourceExists,
+            targetExists,
+          });
+        }
+      });
+
+      // Verify room positions are unique
+      const positions = new Map<string, string>();
+      rooms.forEach((room) => {
+        const pos = `${room.x},${room.y}`;
+        if (positions.has(pos)) {
+          console.error(`Duplicate room position at ${pos}:`, {
+            room1: positions.get(pos),
+            room2: room.id,
+          });
+        }
+        positions.set(pos, room.id);
+      });
+    };
+
+    // Add validation before logging
+    validateRoomConnections(rooms, links);
+
+    // Log room and link counts
+    console.log(`Generated ${rooms.length} rooms and ${links.length} links`);
+
+    // Log the graph structure
+    const getNodeConnections = (roomId: string): any => {
+      const visited = new Set<string>();
+
+      const traverse = (currentId: string): any => {
+        if (visited.has(currentId)) return null;
+        visited.add(currentId);
+
+        const room = rooms.find((r) => r.id === currentId)!;
+        const connections = links
+          .filter(
+            (link) =>
+              link.source.id === currentId || link.target.id === currentId
+          )
+          .map((link) => {
+            const connectedId =
+              link.source.id === currentId ? link.target.id : link.source.id;
+            if (visited.has(connectedId)) return null;
+
+            return {
+              roomId: connectedId,
+              type: link.type,
+              connections: traverse(connectedId),
+            };
+          })
+          .filter((conn): conn is NonNullable<typeof conn> => conn !== null);
+
+        return {
+          id: room.id,
+          name: room.name,
+          position: `(${room.x}, ${room.y})`,
+          connections,
+        };
+      };
+
+      return traverse(roomId);
+    };
+
+    const graphStructure = getNodeConnections(rooms[0].id);
+    console.log('Dungeon Graph Structure:', graphStructure, null, 2);
+
     // Check if we got enough rooms
     if (rooms.length < Math.ceil(numRooms * 0.5)) {
       console.warn(
         `Generated too few rooms (${rooms.length}/${numRooms}). Returning partial dungeon.`
       );
-      const links = generateLinks(rooms, {
-        minConnections: 1,
-        maxConnections: 2,
-      });
       return { rooms, links, complete: false };
     }
 
     // Check timeout
     if (Date.now() - startTime > TIMEOUT_MS) {
       console.warn('Dungeon generation timed out. Returning partial dungeon.');
-      const links = generateLinks(rooms, {
-        minConnections: 1,
-        maxConnections: 2,
-      });
       return { rooms, links, complete: false };
     }
 
-    const links = generateLinks(rooms, { minConnections, maxConnections });
     return { rooms, links, complete: rooms.length === numRooms };
   } catch (error) {
     console.error('Error during dungeon generation:', error);
