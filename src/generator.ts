@@ -1,11 +1,18 @@
-// TODO: add secondary links back in
-// TODO: add add disconnected rooms (links via secondary only, and rarely not at all SPACE WAAALK)
-// TODO: add dice rolls for number of rooms and secondary links per room
 // TODO: add room names, purpose and descriptions
 
 import type { RoomNode, RoomLink } from './dungeon';
 
 interface DungeonGenerationConfig {
+  numRooms: number;
+  dungeonWidth: number;
+  dungeonHeight: number;
+  branchingFactor?: number;
+  directionalBias?: number;
+  minSecondaryLinks?: number;
+  maxSecondaryLinks?: number;
+}
+
+interface RoomGenerationConfig {
   numRooms: number; // Number of rooms to generate
   dungeonWidth: number; // Width of the dungeon canvas
   dungeonHeight: number; // Height of the dungeon canvas
@@ -41,7 +48,7 @@ function getPositionKey(x: number, y: number): string {
 }
 
 // Main generation function refactored
-export function generateRooms(config: DungeonGenerationConfig): {
+export function generateRooms(config: RoomGenerationConfig): {
   rooms: RoomNode[];
   links: RoomLink[];
 } {
@@ -49,8 +56,8 @@ export function generateRooms(config: DungeonGenerationConfig): {
     numRooms,
     dungeonWidth,
     dungeonHeight,
-    branchingFactor,
-    directionalBias = 0.7,
+    branchingFactor = 50,
+    directionalBias = 70,
   } = config;
 
   const rooms: RoomNode[] = [];
@@ -166,17 +173,7 @@ export function generateRooms(config: DungeonGenerationConfig): {
 }
 
 // Full dungeon generation
-export function generateDungeon(config: {
-  numRooms: number;
-  dungeonWidth: number;
-  dungeonHeight: number;
-  minConnections?: number;
-  maxConnections?: number;
-  branchingFactor?: number;
-  directionalBias?: number;
-  minSecondaryLinks?: number;
-  maxSecondaryLinks?: number;
-}): {
+export function generateDungeon(config: DungeonGenerationConfig): {
   rooms: RoomNode[];
   links: RoomLink[];
   complete: boolean;
@@ -185,28 +182,27 @@ export function generateDungeon(config: {
     numRooms,
     dungeonWidth,
     dungeonHeight,
-    minConnections = Math.min(2, Math.max(1, Math.floor(numRooms * 0.2))),
-    maxConnections = Math.min(4, Math.floor(numRooms * 0.5)),
-    branchingFactor = 0.5,
-    directionalBias = 0.7,
+    branchingFactor = 50,
+    directionalBias = 70,
     minSecondaryLinks = 1,
     maxSecondaryLinks = Math.ceil(numRooms * 0.3),
   } = config;
 
-  // Adjust branchingFactor to ensure reasonable main path length
-  const adjustedBranchingFactor = Math.min(0.67, branchingFactor);
+  // Convert d100 values to 0-1 range
+  const normalizedBranchingFactor = Math.min(0.67, branchingFactor / 100);
+  const normalizedDirectionalBias = directionalBias / 100;
 
   // Set a start time to enforce timeout
   const startTime = Date.now();
-  const TIMEOUT_MS = 2000; // 2 second timeout
+  const TIMEOUT_MS = 2000;
 
   try {
     const { rooms, links } = generateRooms({
       numRooms,
       dungeonWidth,
       dungeonHeight,
-      branchingFactor: adjustedBranchingFactor,
-      directionalBias,
+      branchingFactor: normalizedBranchingFactor,
+      directionalBias: normalizedDirectionalBias,
     });
 
     // Add secondary links
