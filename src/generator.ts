@@ -174,10 +174,12 @@ export function generateDungeon(config: {
   maxConnections?: number;
   branchingFactor?: number;
   directionalBias?: number;
+  minSecondaryLinks?: number;
+  maxSecondaryLinks?: number;
 }): {
   rooms: RoomNode[];
   links: RoomLink[];
-  complete: boolean; // Add flag to indicate if generation completed fully
+  complete: boolean;
 } {
   const {
     numRooms,
@@ -187,6 +189,8 @@ export function generateDungeon(config: {
     maxConnections = Math.min(4, Math.floor(numRooms * 0.5)),
     branchingFactor = 0.5,
     directionalBias = 0.7,
+    minSecondaryLinks = 1,
+    maxSecondaryLinks = Math.ceil(numRooms * 0.3),
   } = config;
 
   // Adjust branchingFactor to ensure reasonable main path length
@@ -204,6 +208,65 @@ export function generateDungeon(config: {
       branchingFactor: adjustedBranchingFactor,
       directionalBias,
     });
+
+    // Add secondary links
+    const addSecondaryLinks = (
+      rooms: RoomNode[],
+      primaryLinks: RoomLink[]
+    ): RoomLink[] => {
+      const allLinks = [...primaryLinks];
+      const numSecondaryLinks = Math.floor(
+        minSecondaryLinks +
+          Math.random() * (maxSecondaryLinks - minSecondaryLinks + 1)
+      );
+
+      // Helper to check if a link already exists between two rooms
+      const hasLink = (room1: RoomNode, room2: RoomNode): boolean => {
+        return allLinks.some(
+          (link) =>
+            (link.source.id === room1.id && link.target.id === room2.id) ||
+            (link.source.id === room2.id && link.target.id === room1.id)
+        );
+      };
+
+      // Helper to calculate Manhattan distance between rooms
+      const getManhattanDistance = (
+        room1: RoomNode,
+        room2: RoomNode
+      ): number => {
+        return Math.abs(room1.x - room2.x) + Math.abs(room1.y - room2.y);
+      };
+
+      for (let i = 0; i < numSecondaryLinks; i++) {
+        const room1 = rooms[Math.floor(Math.random() * rooms.length)];
+        let attempts = 20; // Limit attempts to find a valid connection
+
+        while (attempts > 0) {
+          const room2 = rooms[Math.floor(Math.random() * rooms.length)];
+          const distance = getManhattanDistance(room1, room2);
+
+          // Check if this would be a valid secondary link
+          if (
+            room1.id !== room2.id && // Not the same room
+            !hasLink(room1, room2) && // No existing link
+            distance <= 3 // Rooms are relatively close
+          ) {
+            allLinks.push({
+              source: room1,
+              target: room2,
+              type: 'secondary', // Mark as secondary link
+            });
+            break;
+          }
+          attempts--;
+        }
+      }
+
+      return allLinks;
+    };
+
+    // Add secondary links to the dungeon
+    const finalLinks = addSecondaryLinks(rooms, links);
 
     // Add validation before logging
     const validateRoomConnections = (
@@ -240,10 +303,12 @@ export function generateDungeon(config: {
     };
 
     // Add validation before logging
-    validateRoomConnections(rooms, links);
+    validateRoomConnections(rooms, finalLinks);
 
     // Log room and link counts
-    console.log(`Generated ${rooms.length} rooms and ${links.length} links`);
+    console.log(
+      `Generated ${rooms.length} rooms and ${finalLinks.length} links`
+    );
 
     // Log the graph structure
     const getNodeConnections = (roomId: string): any => {
@@ -254,7 +319,7 @@ export function generateDungeon(config: {
         visited.add(currentId);
 
         const room = rooms.find((r) => r.id === currentId)!;
-        const connections = links
+        const connections = finalLinks
           .filter(
             (link) =>
               link.source.id === currentId || link.target.id === currentId
@@ -291,16 +356,16 @@ export function generateDungeon(config: {
       console.warn(
         `Generated too few rooms (${rooms.length}/${numRooms}). Returning partial dungeon.`
       );
-      return { rooms, links, complete: false };
+      return { rooms, links: finalLinks, complete: false };
     }
 
     // Check timeout
     if (Date.now() - startTime > TIMEOUT_MS) {
       console.warn('Dungeon generation timed out. Returning partial dungeon.');
-      return { rooms, links, complete: false };
+      return { rooms, links: finalLinks, complete: false };
     }
 
-    return { rooms, links, complete: rooms.length === numRooms };
+    return { rooms, links: finalLinks, complete: rooms.length === numRooms };
   } catch (error) {
     console.error('Error during dungeon generation:', error);
     // Return at least something valid if we have a center room

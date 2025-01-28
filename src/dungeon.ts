@@ -7,10 +7,10 @@ export interface RoomNode extends d3.SimulationNodeDatum {
   y: number;
 }
 
-export interface RoomLink extends d3.SimulationLinkDatum<RoomNode> {
+export interface RoomLink {
   source: RoomNode;
   target: RoomNode;
-  type: string;
+  type: 'door' | 'secondary';
 }
 
 export interface DungeonGraph {
@@ -125,7 +125,11 @@ export class DungeonGenerator {
       return null;
     }
 
-    const link: RoomLink = { source: sourceNode, target: targetNode, type };
+    const link: RoomLink = {
+      source: sourceNode,
+      target: targetNode,
+      type: type === 'secondary' ? 'secondary' : 'door',
+    };
     this.graph.links.push(link);
     return link;
   }
@@ -232,6 +236,9 @@ export class DungeonGenerator {
       .append('line')
       .attr('stroke', (d) => (d.type === 'door' ? 'black' : 'red'))
       .attr('stroke-width', (d) => (d.type === 'door' ? 2 : 1))
+      .attr('stroke-dasharray', (d) =>
+        d.type === 'secondary' ? '4,4' : 'none'
+      )
       .attr('x1', (d) => d.source.x + offsetX)
       .attr('y1', (d) => d.source.y + offsetY)
       .attr('x2', (d) => d.target.x + offsetX)
