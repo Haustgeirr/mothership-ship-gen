@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import { PRNG } from './dice';
 
 export interface RoomNode extends d3.SimulationNodeDatum {
   id: string;
@@ -21,10 +22,12 @@ export interface DungeonGraph {
 export class DungeonGenerator {
   graph: DungeonGraph;
   cellSize: number;
+  private random: PRNG;
 
-  constructor(cellSize: number = 40) {
+  constructor(cellSize: number = 40, random?: PRNG) {
     this.graph = { rooms: [], links: [] };
     this.cellSize = cellSize;
+    this.random = random || new PRNG();
   }
 
   private isPositionOccupied(x: number, y: number): boolean {
@@ -141,11 +144,13 @@ export class DungeonGenerator {
   ): void {
     let roomsCreated = 0;
     let attempts = 0;
-    const maxAttempts = 1000; // Prevent infinite loops
+    const maxAttempts = 1000;
 
     while (roomsCreated < numRooms && attempts < maxAttempts) {
-      const x = Math.floor(Math.random() * (dungeonWidth / this.cellSize));
-      const y = Math.floor(Math.random() * (dungeonHeight / this.cellSize));
+      const x = Math.floor(this.random.next() * (dungeonWidth / this.cellSize));
+      const y = Math.floor(
+        this.random.next() * (dungeonHeight / this.cellSize)
+      );
 
       const result = this.addRoom(`Room ${roomsCreated}`, x, y, false);
       if (result) {
@@ -178,7 +183,7 @@ export class DungeonGenerator {
 
         if (isAdjacent) {
           this.addLink(room.id, otherRoom.id, 'primary');
-        } else if (Math.random() > primaryProbability) {
+        } else if (this.random.next() > primaryProbability) {
           this.addLink(room.id, otherRoom.id, 'secondary');
         }
       });

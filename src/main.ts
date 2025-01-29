@@ -1,6 +1,6 @@
 import { DungeonGenerator } from './dungeon';
 import { generateDungeon } from './generator';
-import { roll } from './dice';
+import { prng, roll } from './dice';
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
 
@@ -8,9 +8,9 @@ if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
 }
 
-// Initialize with current timestamp as seed
-const seed = Date.now();
+// Initialize with specific seed
 const dungeonGenerator = new DungeonGenerator();
+prng.constructor(1234);
 
 const numRooms = roll(6, 4).total;
 
@@ -25,7 +25,7 @@ const config = {
   directionalBias: roll(100).total, // d100: higher means more likely to continue same direction
 };
 
-console.log(roll(6, 3));
+console.log(config);
 
 const { rooms, links } = generateDungeon(config);
 

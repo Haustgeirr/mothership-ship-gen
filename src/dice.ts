@@ -1,7 +1,7 @@
 /**
  * A simple implementation of the xoshiro128** algorithm for pseudo-random number generation
  */
-class PRNG {
+export class PRNG {
   private a: number;
   private b: number;
   private c: number;
@@ -41,7 +41,14 @@ class PRNG {
 }
 
 // Create a singleton instance of PRNG
-const rng = new PRNG();
+export const prng = new PRNG();
+
+/**
+ * Gets the current timestamp, useful for storing seeds
+ */
+export function getCurrentTimestamp(): number {
+  return Date.now();
+}
 
 /**
  * Represents the result of a dice roll
@@ -63,7 +70,7 @@ export function roll(sides: number, quantity: number = 1): DiceRollResult {
 
   const rolls: number[] = [];
   for (let i = 0; i < quantity; i++) {
-    rolls.push(rng.nextInt(1, sides));
+    rolls.push(prng.nextInt(1, sides));
   }
 
   return {

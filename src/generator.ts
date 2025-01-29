@@ -1,6 +1,7 @@
 // TODO: add room names, purpose and descriptions
 
 import type { RoomNode, RoomLink } from './dungeon';
+import { prng as defaultPrng } from './dice';
 
 interface DungeonGenerationConfig {
   numRooms: number;
@@ -10,6 +11,7 @@ interface DungeonGenerationConfig {
   directionalBias?: number;
   minSecondaryLinks?: number;
   maxSecondaryLinks?: number;
+  prng?: () => number;
 }
 
 interface RoomGenerationConfig {
@@ -18,6 +20,7 @@ interface RoomGenerationConfig {
   dungeonHeight: number; // Height of the dungeon canvas
   branchingFactor: number; // Now controls what % of rooms will be part of branches
   directionalBias?: number; // 0-1: How likely to continue in the same direction
+  prng: () => number;
 }
 
 interface Position {
@@ -58,6 +61,7 @@ export function generateRooms(config: RoomGenerationConfig): {
     dungeonHeight,
     branchingFactor = 50,
     directionalBias = 70,
+    prng,
   } = config;
 
   const rooms: RoomNode[] = [];
@@ -104,7 +108,7 @@ export function generateRooms(config: RoomGenerationConfig): {
         }
 
         // For main path, apply directional bias
-        if (isMainPath && lastDirection && Math.random() < directionalBias) {
+        if (isMainPath && lastDirection && prng() < directionalBias) {
           return (
             newPos.x - pos.x === lastDirection.x &&
             newPos.y - pos.y === lastDirection.y
@@ -155,7 +159,7 @@ export function generateRooms(config: RoomGenerationConfig): {
 
   // Generate branch rooms
   while (rooms.length < numRooms) {
-    const sourceRoom = rooms[Math.floor(Math.random() * rooms.length)];
+    const sourceRoom = rooms[Math.floor(prng() * rooms.length)];
     const validPositions = getValidAdjacentPositions(
       sourceRoom,
       undefined,
@@ -186,6 +190,7 @@ export function generateDungeon(config: DungeonGenerationConfig): {
     directionalBias = 70,
     minSecondaryLinks = 1,
     maxSecondaryLinks = Math.ceil(numRooms * 0.3),
+    prng,
   } = config;
 
   // Convert d100 values to 0-1 range
@@ -203,6 +208,7 @@ export function generateDungeon(config: DungeonGenerationConfig): {
       dungeonHeight,
       branchingFactor: normalizedBranchingFactor,
       directionalBias: normalizedDirectionalBias,
+      prng: ,
     });
 
     // Add secondary links
@@ -212,8 +218,7 @@ export function generateDungeon(config: DungeonGenerationConfig): {
     ): RoomLink[] => {
       const allLinks = [...primaryLinks];
       const numSecondaryLinks = Math.floor(
-        minSecondaryLinks +
-          Math.random() * (maxSecondaryLinks - minSecondaryLinks + 1)
+        minSecondaryLinks + prng() * (maxSecondaryLinks - minSecondaryLinks + 1)
       );
 
       // Helper to check if a link already exists between two rooms
@@ -234,11 +239,11 @@ export function generateDungeon(config: DungeonGenerationConfig): {
       };
 
       for (let i = 0; i < numSecondaryLinks; i++) {
-        const room1 = rooms[Math.floor(Math.random() * rooms.length)];
+        const room1 = rooms[Math.floor(prng() * rooms.length)];
         let attempts = 20; // Limit attempts to find a valid connection
 
         while (attempts > 0) {
-          const room2 = rooms[Math.floor(Math.random() * rooms.length)];
+          const room2 = rooms[Math.floor(prng() * rooms.length)];
           const distance = getManhattanDistance(room1, room2);
 
           // Check if this would be a valid secondary link
