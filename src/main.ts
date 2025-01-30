@@ -1,6 +1,7 @@
-import { DungeonGenerator } from './dungeon';
-import { generateDungeon } from './generator';
+import { DungeonGenerator } from './generator';
+import { DungeonRenderer } from './renderer';
 import { roll } from './dice';
+import type { GenerationConfig } from './types';
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
 
@@ -8,34 +9,36 @@ if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
 }
 
-// Initialize with current timestamp as seed
-const seed = Date.now();
-const dungeonGenerator = new DungeonGenerator();
+// Initialize generator and renderer
+const generator = new DungeonGenerator();
+const renderer = new DungeonRenderer(svgElement);
 
-const numRooms = roll(6, 4).total;
+// Generate dungeon configuration using dice rolls
+const numRooms = roll(6, 4).total; // 4d6 rooms
 
-// Generate a dungeon
-const config = {
-  numRooms: roll(6, 4).total, // 3d6+8 (11-26 rooms)
-  dungeonWidth: numRooms, // 4d6+8 (12-32 width)
-  dungeonHeight: numRooms, // 4d6+8 (12-32 height)
-  minConnections: 1, // 1d2 (1-2 min connections)
-  maxConnections: roll(5).total, // 1d2+2 (3-4 max connections)
+const config: GenerationConfig = {
+  numRooms,
+  dungeonWidth: numRooms * 40, // Scale width based on number of rooms
+  dungeonHeight: numRooms * 40, // Scale height based on number of rooms
   branchingFactor: roll(100).total, // d100: higher means more linear
   directionalBias: roll(100).total, // d100: higher means more likely to continue same direction
+  minSecondaryLinks: roll(2).total, // 1d2 minimum secondary connections
+  maxSecondaryLinks: roll(2).total + 2, // 1d2+2 maximum secondary connections
+  cellSize: 40,
 };
 
-console.log(roll(6, 3));
+console.log('Generating dungeon with config:', config);
 
-const { rooms, links } = generateDungeon(config);
+// Generate and render the dungeon
+const dungeon = generator.generate(config);
 
-rooms.forEach((room) => dungeonGenerator.addRoom(room.name, room.x, room.y));
-links.forEach((link) => {
-  const sourceId =
-    typeof link.source === 'string' ? link.source : link.source.id;
-  const targetId =
-    typeof link.target === 'string' ? link.target : link.target.id;
-  dungeonGenerator.addLink(sourceId, targetId, link.type);
-});
-
-dungeonGenerator.render(svgElement);
+if (generator.validateDungeon(dungeon)) {
+  console.log('Generated valid dungeon with:', {
+    rooms: dungeon.rooms.length,
+    links: dungeon.links.length,
+  });
+  renderer.render(dungeon);
+} else {
+  console.error('Generated dungeon is not fully connected');
+  renderer.renderDebug(dungeon); // Use debug render to see the issue
+}
