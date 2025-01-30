@@ -9,6 +9,7 @@ interface NodeBounds {
 
 export class DungeonRenderer {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+  private graph: DungeonGraph | null = null;
 
   private getNodeBounds(node: RoomNode): NodeBounds {
     return {
@@ -29,37 +30,120 @@ export class DungeonRenderer {
   private calculateEndpoint(
     source: RoomNode,
     target: RoomNode,
-    bounds: NodeBounds
+    bounds: NodeBounds,
+    link?: RoomLink
   ) {
     const dx = target.x - source.x;
     const dy = target.y - source.y;
 
-    // Determine the dominant direction and snap to cardinal
-    let angle: number;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      // East or West
-      angle = dx > 0 ? 0 : Math.PI; // 0 for East, PI for West
-    } else {
-      // North or South
-      angle = dy > 0 ? Math.PI / 2 : -Math.PI / 2; // PI/2 for South, -PI/2 for North
+    // For non-secondary connections, keep existing cardinal direction logic
+    if (!link || link.type !== 'secondary') {
+      // Determine the dominant direction and snap to cardinal
+      let angle: number;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        angle = dx > 0 ? 0 : Math.PI; // 0 for East, PI for West
+      } else {
+        angle = dy > 0 ? Math.PI / 2 : -Math.PI / 2; // PI/2 for South, -PI/2 for North
+      }
+
+      let intersectDistance: number;
+      if (bounds.shape === 'circle') {
+        intersectDistance = bounds.width / 2;
+      } else {
+        intersectDistance =
+          Math.abs(Math.cos(angle)) > 0 ? bounds.width / 2 : bounds.height / 2;
+      }
+
+      return {
+        x: source.x + Math.cos(angle) * intersectDistance,
+        y: source.y + Math.sin(angle) * intersectDistance,
+      };
     }
 
-    let intersectDistance: number;
-    if (bounds.shape === 'circle') {
-      intersectDistance = bounds.width / 2;
-    } else {
-      // For rectangles, we now know it's exactly width/2 or height/2
-      // depending on the cardinal direction
-      intersectDistance =
-        Math.abs(Math.cos(angle)) > 0
-          ? bounds.width / 2 // East/West
-          : bounds.height / 2; // North/South
+    // Get all primary connections for this room
+    const primaryDirections = new Set<number>();
+    const links = (this.graph?.links || []).filter(
+      (l) => (l.source === source || l.target === source) && l.type === 'door'
+    );
+
+    // Find the angles used by primary connections
+    links.forEach((l) => {
+      const otherNode = l.source === source ? l.target : l.source;
+      const linkDx = otherNode.x - source.x;
+      const linkDy = otherNode.y - source.y;
+      if (Math.abs(linkDx) > Math.abs(linkDy)) {
+        primaryDirections.add(linkDx > 0 ? 0 : Math.PI); // East or West
+      } else {
+        primaryDirections.add(linkDy > 0 ? Math.PI / 2 : -Math.PI / 2); // South or North
+      }
+    });
+
+    // Calculate center of the dungeon
+    const rooms = this.graph?.rooms || [];
+    const centerX = d3.mean(rooms, (r) => r.x) || 0;
+    const centerY = d3.mean(rooms, (r) => r.y) || 0;
+
+    // Available cardinal directions
+    const angles = [
+      Math.PI / 2, // South
+      -Math.PI / 2, // North
+      0, // East
+      Math.PI, // West
+    ].filter((angle) => !primaryDirections.has(angle));
+
+    // If no free directions, fall back to the original direction
+    if (angles.length === 0) {
+      if (Math.abs(dx) > Math.abs(dy)) {
+        angles.push(dx > 0 ? 0 : Math.PI);
+      } else {
+        angles.push(dy > 0 ? Math.PI / 2 : -Math.PI / 2);
+      }
     }
 
-    // Calculate the endpoint using the snapped angle
+    // Sort angles by:
+    // 1. How well they point outward from center
+    // 2. How well they match the target direction
+    const targetAngle = Math.atan2(dy, dx);
+    angles.sort((a, b) => {
+      // Calculate endpoints for each angle
+      const pointA = {
+        x: source.x + Math.cos(a) * bounds.width,
+        y: source.y + Math.sin(a) * bounds.width,
+      };
+      const pointB = {
+        x: source.x + Math.cos(b) * bounds.width,
+        y: source.y + Math.sin(b) * bounds.width,
+      };
+
+      // Calculate distances from center for each endpoint
+      const distA = Math.sqrt(
+        (pointA.x - centerX) ** 2 + (pointA.y - centerY) ** 2
+      );
+      const distB = Math.sqrt(
+        (pointB.x - centerX) ** 2 + (pointB.y - centerY) ** 2
+      );
+
+      // Calculate how well each matches the target direction
+      const targetScoreA = Math.abs(
+        ((a - targetAngle + 3 * Math.PI) % (2 * Math.PI)) - Math.PI
+      );
+      const targetScoreB = Math.abs(
+        ((b - targetAngle + 3 * Math.PI) % (2 * Math.PI)) - Math.PI
+      );
+
+      // Combine scores - prefer greater distance from center and better target match
+      const scoreA = distA - targetScoreA * 20;
+      const scoreB = distB - targetScoreB * 20;
+
+      return scoreB - scoreA; // Higher score first
+    });
+
+    const intersectDistance =
+      bounds.shape === 'circle' ? bounds.width / 2 : bounds.width / 2;
+
     return {
-      x: source.x + Math.cos(angle) * intersectDistance,
-      y: source.y + Math.sin(angle) * intersectDistance,
+      x: source.x + Math.cos(angles[0]) * intersectDistance,
+      y: source.y + Math.sin(angles[0]) * intersectDistance,
     };
   }
 
@@ -86,7 +170,6 @@ export class DungeonRenderer {
   private renderLinks(graph: DungeonGraph, offsetX: number, offsetY: number) {
     const linkGroup = this.svg.append('g');
 
-    // Draw the lines first
     linkGroup
       .selectAll<SVGLineElement, RoomLink>('line')
       .data(graph.links)
@@ -101,7 +184,8 @@ export class DungeonRenderer {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
-          this.getNodeBounds(d.target)
+          this.getNodeBounds(d.target),
+          d
         );
         return start.x + offsetX;
       })
@@ -109,7 +193,8 @@ export class DungeonRenderer {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
-          this.getNodeBounds(d.target)
+          this.getNodeBounds(d.target),
+          d
         );
         return start.y + offsetY;
       })
@@ -117,7 +202,8 @@ export class DungeonRenderer {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
-          this.getNodeBounds(d.source)
+          this.getNodeBounds(d.source),
+          d
         );
         return end.x + offsetX;
       })
@@ -125,7 +211,8 @@ export class DungeonRenderer {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
-          this.getNodeBounds(d.source)
+          this.getNodeBounds(d.source),
+          d
         );
         return end.y + offsetY;
       });
@@ -154,7 +241,8 @@ export class DungeonRenderer {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
-          this.getNodeBounds(d.target)
+          this.getNodeBounds(d.target),
+          d
         );
         return start.x + offsetX;
       })
@@ -162,7 +250,8 @@ export class DungeonRenderer {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
-          this.getNodeBounds(d.target)
+          this.getNodeBounds(d.target),
+          d
         );
         return start.y + offsetY;
       });
@@ -182,7 +271,8 @@ export class DungeonRenderer {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
-          this.getNodeBounds(d.source)
+          this.getNodeBounds(d.source),
+          d
         );
         return end.x + offsetX;
       })
@@ -190,7 +280,8 @@ export class DungeonRenderer {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
-          this.getNodeBounds(d.source)
+          this.getNodeBounds(d.source),
+          d
         );
         return end.y + offsetY;
       });
@@ -218,7 +309,8 @@ export class DungeonRenderer {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
-          this.getNodeBounds(d.target)
+          this.getNodeBounds(d.target),
+          d
         );
         return start.x + offsetX - this.getConnectorBounds(d).width / 2;
       })
@@ -226,7 +318,8 @@ export class DungeonRenderer {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
-          this.getNodeBounds(d.target)
+          this.getNodeBounds(d.target),
+          d
         );
         return start.y + offsetY - this.getConnectorBounds(d).height / 2;
       });
@@ -247,7 +340,8 @@ export class DungeonRenderer {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
-          this.getNodeBounds(d.source)
+          this.getNodeBounds(d.source),
+          d
         );
         return end.x + offsetX - this.getConnectorBounds(d).width / 2;
       })
@@ -255,7 +349,8 @@ export class DungeonRenderer {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
-          this.getNodeBounds(d.source)
+          this.getNodeBounds(d.source),
+          d
         );
         return end.y + offsetY - this.getConnectorBounds(d).height / 2;
       });
@@ -278,6 +373,7 @@ export class DungeonRenderer {
 
   render(graph: DungeonGraph): void {
     this.svg.selectAll('*').remove();
+    this.graph = graph; // Store the graph
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
 
