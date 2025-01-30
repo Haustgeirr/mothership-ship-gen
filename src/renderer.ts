@@ -33,32 +33,33 @@ export class DungeonRenderer {
   ) {
     const dx = target.x - source.x;
     const dy = target.y - source.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx);
+
+    // Determine the dominant direction and snap to cardinal
+    let angle: number;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // East or West
+      angle = dx > 0 ? 0 : Math.PI; // 0 for East, PI for West
+    } else {
+      // North or South
+      angle = dy > 0 ? Math.PI / 2 : -Math.PI / 2; // PI/2 for South, -PI/2 for North
+    }
 
     let intersectDistance: number;
     if (bounds.shape === 'circle') {
-      // For circles, distance is always radius
       intersectDistance = bounds.width / 2;
     } else {
-      // For rectangles, calculate intersection with bounding box
-      // Using parametric form of line and rectangle intersection
-      const w = bounds.width / 2;
-      const h = bounds.height / 2;
-
-      // Calculate distances to intersection with vertical and horizontal edges
-      const tx = Math.abs(w / Math.cos(angle));
-      const ty = Math.abs(h / Math.sin(angle));
-
-      // Use the shorter distance
-      intersectDistance = Math.min(tx, ty);
+      // For rectangles, we now know it's exactly width/2 or height/2
+      // depending on the cardinal direction
+      intersectDistance =
+        Math.abs(Math.cos(angle)) > 0
+          ? bounds.width / 2 // East/West
+          : bounds.height / 2; // North/South
     }
 
-    // Calculate the point that's intersectDistance units along the line
-    const ratio = (distance - intersectDistance) / distance;
+    // Calculate the endpoint using the snapped angle
     return {
-      x: source.x + dx * ratio,
-      y: source.y + dy * ratio,
+      x: source.x + Math.cos(angle) * intersectDistance,
+      y: source.y + Math.sin(angle) * intersectDistance,
     };
   }
 
