@@ -169,52 +169,78 @@ export class DungeonRenderer {
 
   private renderLinks(graph: DungeonGraph, offsetX: number, offsetY: number) {
     const linkGroup = this.svg.append('g');
+    const GRID_UNIT = 20; // Standard grid unit for offset
 
     linkGroup
-      .selectAll<SVGLineElement, RoomLink>('line')
+      .selectAll<SVGPathElement, RoomLink>('path')
       .data(graph.links)
       .enter()
-      .append('line')
+      .append('path')
       .attr('stroke', (d) => (d.type === 'door' ? 'black' : 'red'))
       .attr('stroke-width', (d) => (d.type === 'door' ? 2 : 1))
+      .attr('fill', 'none')
       .attr('stroke-dasharray', (d) =>
         d.type === 'secondary' ? '4,4' : 'none'
       )
-      .attr('x1', (d) => {
+      .attr('d', (d) => {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
           this.getNodeBounds(d.target),
           d
         );
-        return start.x + offsetX;
-      })
-      .attr('y1', (d) => {
-        const start = this.calculateEndpoint(
-          d.target,
-          d.source,
-          this.getNodeBounds(d.target),
-          d
-        );
-        return start.y + offsetY;
-      })
-      .attr('x2', (d) => {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
           this.getNodeBounds(d.source),
           d
         );
-        return end.x + offsetX;
-      })
-      .attr('y2', (d) => {
-        const end = this.calculateEndpoint(
-          d.source,
-          d.target,
-          this.getNodeBounds(d.source),
-          d
-        );
-        return end.y + offsetY;
+
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+
+        // For secondary connections, check if nodes are collinear
+        if (d.type === 'secondary') {
+          // If nodes are horizontally aligned
+          if (Math.abs(dy) < 1) {
+            // Calculate center of the dungeon
+            const rooms = this.graph?.rooms || [];
+            const centerY = d3.mean(rooms, (r) => r.y) || 0;
+            // Invert the offset direction to match connector preference
+            const offsetDirection = start.y > centerY ? 1 : -1;
+
+            return `M ${start.x + offsetX} ${start.y + offsetY}
+                    V ${start.y + GRID_UNIT * offsetDirection + offsetY}
+                    H ${end.x + offsetX}
+                    V ${end.y + offsetY}`;
+          }
+          // If nodes are vertically aligned
+          if (Math.abs(dx) < 1) {
+            // Calculate center of the dungeon
+            const rooms = this.graph?.rooms || [];
+            const centerX = d3.mean(rooms, (r) => r.x) || 0;
+            // Invert the offset direction to match connector preference
+            const offsetDirection = start.x > centerX ? 1 : -1;
+
+            return `M ${start.x + offsetX} ${start.y + offsetY}
+                    H ${start.x + GRID_UNIT * offsetDirection + offsetX}
+                    V ${end.y + offsetY}
+                    H ${end.x + offsetX}`;
+          }
+        }
+
+        // For non-collinear connections or primary connections, use the original logic
+        const horizontalFirst = Math.abs(dx) > Math.abs(dy);
+
+        if (horizontalFirst) {
+          return `M ${start.x + offsetX} ${start.y + offsetY}
+                  H ${end.x + offsetX}
+                  V ${end.y + offsetY}`;
+        } else {
+          return `M ${start.x + offsetX} ${start.y + offsetY}
+                  V ${end.y + offsetY}
+                  H ${end.x + offsetX}`;
+        }
       });
 
     return linkGroup;
