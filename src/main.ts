@@ -1,7 +1,8 @@
 import { DungeonGenerator } from './generator';
 import { DungeonRenderer } from './renderer';
-import { roll } from './dice';
 import type { GenerationConfig } from './types';
+import { PRNG } from './prng';
+import { Dice } from './dice';
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
 
@@ -9,21 +10,30 @@ if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
 }
 
-// Initialize generator and renderer
+// Initialize PRNG, generator and renderer
+const seed = 1738277232585;
+new PRNG(seed);
+
+// Update seed display
+const seedDisplay = document.querySelector<HTMLSpanElement>('#seed-display');
+if (seedDisplay) {
+  seedDisplay.textContent = seed.toString();
+}
+
 const generator = new DungeonGenerator();
 const renderer = new DungeonRenderer(svgElement);
 
 // Generate dungeon configuration using dice rolls
-const numRooms = roll(6, 4).total; // 4d6 rooms
+const numRooms = Dice.roll(6, 4).total; // 4d6 rooms
 
 const config: GenerationConfig = {
   numRooms,
   dungeonWidth: numRooms * 40, // Scale width based on number of rooms
   dungeonHeight: numRooms * 40, // Scale height based on number of rooms
-  branchingFactor: roll(100).total, // d100: higher means more linear
-  directionalBias: roll(100).total, // d100: higher means more likely to continue same direction
-  minSecondaryLinks: roll(2).total, // 1d2 minimum secondary connections
-  maxSecondaryLinks: roll(2).total + 2, // 1d2+2 maximum secondary connections
+  branchingFactor: Dice.roll(100).total, // d100: higher means more linear
+  directionalBias: Dice.roll(100).total, // d100: higher means more likely to continue same direction
+  minSecondaryLinks: Dice.roll(2).total, // 1d2 minimum secondary connections
+  maxSecondaryLinks: Dice.roll(2).total + 2, // 1d2+2 maximum secondary connections
   cellSize: 40,
 };
 

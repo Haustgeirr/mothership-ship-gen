@@ -6,6 +6,7 @@ import type {
   RoomLink,
   GenerationConfig,
 } from './types';
+import { Dice } from './dice';
 
 export class DungeonGenerator {
   private cellSize: number;
@@ -127,7 +128,7 @@ export class DungeonGenerator {
 
       // Prefer continuing in the same direction if possible
       let nextPos = validPositions[0];
-      if (lastDirection && Math.random() < directionalBias / 100) {
+      if (lastDirection && Dice.d(100) <= directionalBias) {
         const sameDirection = validPositions.find(
           (pos) =>
             pos.dir.x === lastDirection!.x && pos.dir.y === lastDirection!.y
@@ -147,8 +148,7 @@ export class DungeonGenerator {
 
     // Add branch rooms
     while (graph.rooms.length < numRooms) {
-      const sourceRoom =
-        graph.rooms[Math.floor(Math.random() * graph.rooms.length)];
+      const sourceRoom = graph.rooms[Dice.d(graph.rooms.length) - 1];
       const validPositions = this.directions
         .map((dir) => ({
           x: sourceRoom.x / this.cellSize + dir.x,
@@ -166,22 +166,19 @@ export class DungeonGenerator {
 
       if (validPositions.length === 0) continue;
 
-      const pos =
-        validPositions[Math.floor(Math.random() * validPositions.length)];
+      const pos = validPositions[Dice.d(validPositions.length) - 1];
       const newRoom = this.createRoom(graph.rooms.length, pos.x, pos.y);
       graph.rooms.push(newRoom);
       graph.links.push(this.createLink(sourceRoom, newRoom, 'door'));
     }
 
     // Add secondary links
-    const numSecondaryLinks = Math.floor(
-      minSecondaryLinks +
-        Math.random() * (maxSecondaryLinks - minSecondaryLinks + 1)
-    );
+    const numSecondaryLinks =
+      minSecondaryLinks + Dice.d(maxSecondaryLinks - minSecondaryLinks + 1) - 1;
 
     for (let i = 0; i < numSecondaryLinks; i++) {
-      const room1 = graph.rooms[Math.floor(Math.random() * graph.rooms.length)];
-      const room2 = graph.rooms[Math.floor(Math.random() * graph.rooms.length)];
+      const room1 = graph.rooms[Dice.d(graph.rooms.length) - 1];
+      const room2 = graph.rooms[Dice.d(graph.rooms.length) - 1];
 
       if (
         room1.id !== room2.id &&
