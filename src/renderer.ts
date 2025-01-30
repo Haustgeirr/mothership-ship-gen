@@ -260,7 +260,7 @@ export class DungeonRenderer {
       .append('circle')
       .attr('class', 'connector')
       .attr('r', (d) => this.getConnectorBounds(d).width / 2)
-      .attr('fill', 'white')
+      .attr('fill', 'black')
       .attr('stroke', 'black')
       .attr('stroke-width', 1)
       .attr('cx', (d) => {
@@ -290,7 +290,7 @@ export class DungeonRenderer {
       .append('circle')
       .attr('class', 'connector-target')
       .attr('r', (d) => this.getConnectorBounds(d).width / 2)
-      .attr('fill', 'white')
+      .attr('fill', 'black')
       .attr('stroke', 'black')
       .attr('stroke-width', 1)
       .attr('cx', (d) => {
@@ -383,18 +383,23 @@ export class DungeonRenderer {
   }
 
   private renderRooms(graph: DungeonGraph, offsetX: number, offsetY: number) {
-    return this.svg
-      .append('g')
-      .selectAll<SVGCircleElement, RoomNode>('circle')
-      .data(graph.rooms)
-      .enter()
-      .append('circle')
-      .attr('r', 6)
-      .attr('fill', 'black')
-      .attr('cx', (d) => d.x + offsetX)
-      .attr('cy', (d) => d.y + offsetY)
-      .append('title')
-      .text((d: RoomNode) => `${d.name} (${d.id})`);
+    return (
+      this.svg
+        .append('g')
+        .selectAll<SVGRectElement, RoomNode>('rect')
+        .data(graph.rooms)
+        .enter()
+        .append('rect')
+        .attr('width', (d) => this.getNodeBounds(d).width)
+        .attr('height', (d) => this.getNodeBounds(d).height)
+        .attr('fill', 'white')
+        .attr('stroke', 'black')
+        // Adjust x and y to account for rectangle dimensions
+        .attr('x', (d) => d.x + offsetX - this.getNodeBounds(d).width / 2)
+        .attr('y', (d) => d.y + offsetY - this.getNodeBounds(d).height / 2)
+        .append('title')
+        .text((d: RoomNode) => `${d.name} (${d.id})`)
+    );
   }
 
   render(graph: DungeonGraph): void {
@@ -403,10 +408,11 @@ export class DungeonRenderer {
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
 
+    // Render rooms first so they appear behind everything else
+    this.renderRooms(graph, offsetX, offsetY);
     const linkGroup = this.renderLinks(graph, offsetX, offsetY);
     this.renderDoorConnectors(linkGroup, graph, offsetX, offsetY);
     this.renderSecondaryConnectors(linkGroup, graph, offsetX, offsetY);
-    this.renderRooms(graph, offsetX, offsetY);
   }
 
   // Optional: Add debug rendering
