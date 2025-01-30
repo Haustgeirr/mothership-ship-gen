@@ -5,6 +5,7 @@ export interface RoomNode extends SimulationNodeDatum {
   name: string;
   x: number;
   y: number;
+  size?: number;
 }
 
 export interface RoomLink {
