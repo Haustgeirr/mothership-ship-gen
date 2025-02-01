@@ -11,7 +11,9 @@ if (!svgElement) {
 }
 
 // Initialize PRNG, generator and renderer
-const seed = 1738277232585;
+// const seed = 1738277232585;
+// const seed = 1738405946252;
+const seed = Date.now();
 new PRNG(seed);
 
 // Update seed display
@@ -47,7 +49,8 @@ if (generator.validateDungeon(dungeon)) {
     rooms: dungeon.rooms.length,
     links: dungeon.links.length,
   });
-  renderer.render(dungeon);
+  const navigationData = generator.createNavigationGrid();
+  renderer.render(dungeon, navigationData);
 } else {
   console.error('Generated dungeon is not fully connected');
   renderer.renderDebug(dungeon); // Use debug render to see the issue

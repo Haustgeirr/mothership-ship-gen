@@ -1,10 +1,16 @@
 import * as d3 from 'd3';
 import type { DungeonGraph, RoomNode, RoomLink } from './types';
+import { AStarGrid, type GridCell } from './AStarGrid';
 
 interface NodeBounds {
   width: number;
   height: number;
   shape: 'circle' | 'rectangle';
+}
+
+export interface NavigationGridData {
+  grid: GridCell[][];
+  cellSize: number;
 }
 
 export class DungeonRenderer {
@@ -167,9 +173,15 @@ export class DungeonRenderer {
     };
   }
 
-  private renderLinks(graph: DungeonGraph, offsetX: number, offsetY: number) {
+  private renderLinks(
+    graph: DungeonGraph,
+    offsetX: number,
+    offsetY: number,
+    navigationData: NavigationGridData
+  ) {
     const linkGroup = this.svg.append('g');
-    const GRID_UNIT = 20; // Standard grid unit for offset
+    const { grid, cellSize } = navigationData;
+    const pathfinder = new AStarGrid(grid);
 
     linkGroup
       .selectAll<SVGPathElement, RoomLink>('path')
@@ -183,6 +195,7 @@ export class DungeonRenderer {
         d.type === 'secondary' ? '4,4' : 'none'
       )
       .attr('d', (d) => {
+        // Calculate proper start and end points
         const start = this.calculateEndpoint(
           d.target,
           d.source,
@@ -196,51 +209,34 @@ export class DungeonRenderer {
           d
         );
 
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
+        // Convert room coordinates to grid coordinates
+        const sourceX = Math.floor(d.source.x / cellSize);
+        const sourceY = Math.floor(d.source.y / cellSize);
+        const targetX = Math.floor(d.target.x / cellSize);
+        const targetY = Math.floor(d.target.y / cellSize);
 
-        // For secondary connections, check if nodes are collinear
-        if (d.type === 'secondary') {
-          // If nodes are horizontally aligned
-          if (Math.abs(dy) < 1) {
-            // Calculate center of the dungeon
-            const rooms = this.graph?.rooms || [];
-            const centerY = d3.mean(rooms, (r) => r.y) || 0;
-            // Invert the offset direction to match connector preference
-            const offsetDirection = start.y > centerY ? 1 : -1;
+        // Find path using A*
+        const path = pathfinder.findPath(sourceX, sourceY, targetX, targetY);
 
-            return `M ${start.x + offsetX} ${start.y + offsetY}
-                    V ${start.y + GRID_UNIT * offsetDirection + offsetY}
-                    H ${end.x + offsetX}
-                    V ${end.y + offsetY}`;
-          }
-          // If nodes are vertically aligned
-          if (Math.abs(dx) < 1) {
-            // Calculate center of the dungeon
-            const rooms = this.graph?.rooms || [];
-            const centerX = d3.mean(rooms, (r) => r.x) || 0;
-            // Invert the offset direction to match connector preference
-            const offsetDirection = start.x > centerX ? 1 : -1;
-
-            return `M ${start.x + offsetX} ${start.y + offsetY}
-                    H ${start.x + GRID_UNIT * offsetDirection + offsetX}
-                    V ${end.y + offsetY}
-                    H ${end.x + offsetX}`;
-          }
+        if (path.length === 0) {
+          return `M ${start.x + offsetX} ${start.y + offsetY} 
+                  L ${end.x + offsetX} ${end.y + offsetY}`;
         }
 
-        // For non-collinear connections or primary connections, use the original logic
-        const horizontalFirst = Math.abs(dx) > Math.abs(dy);
+        // Start from the calculated start point
+        const pathCommands = [`M ${start.x + offsetX} ${start.y + offsetY}`];
 
-        if (horizontalFirst) {
-          return `M ${start.x + offsetX} ${start.y + offsetY}
-                  H ${end.x + offsetX}
-                  V ${end.y + offsetY}`;
-        } else {
-          return `M ${start.x + offsetX} ${start.y + offsetY}
-                  V ${end.y + offsetY}
-                  H ${end.x + offsetX}`;
-        }
+        // Add path points
+        path.slice(1, -1).forEach(([x, y]) => {
+          const px = x * cellSize + cellSize / 2 + offsetX;
+          const py = y * cellSize + cellSize / 2 + offsetY;
+          pathCommands.push(`L ${px} ${py}`);
+        });
+
+        // End at the calculated end point
+        pathCommands.push(`L ${end.x + offsetX} ${end.y + offsetY}`);
+
+        return pathCommands.join(' ');
       });
 
     return linkGroup;
@@ -402,22 +398,22 @@ export class DungeonRenderer {
     );
   }
 
-  render(graph: DungeonGraph): void {
+  render(graph: DungeonGraph, navigationData: NavigationGridData): void {
     this.svg.selectAll('*').remove();
-    this.graph = graph; // Store the graph
+    this.graph = graph;
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
 
     // Render rooms first so they appear behind everything else
     this.renderRooms(graph, offsetX, offsetY);
-    const linkGroup = this.renderLinks(graph, offsetX, offsetY);
+    const linkGroup = this.renderLinks(graph, offsetX, offsetY, navigationData);
     this.renderDoorConnectors(linkGroup, graph, offsetX, offsetY);
     this.renderSecondaryConnectors(linkGroup, graph, offsetX, offsetY);
   }
 
   // Optional: Add debug rendering
   renderDebug(graph: DungeonGraph): void {
-    this.render(graph);
+    this.render(graph, { grid: [], cellSize: 1 });
 
     const svgWidth = +this.svg.attr('width');
     const svgHeight = +this.svg.attr('height');
