@@ -1,6 +1,7 @@
 import * as d3 from 'd3';
 import type { DungeonGraph, RoomNode, RoomLink } from './types';
 import { AStarGrid, type GridCell } from './AStarGrid';
+import { DUNGEON_CONSTANTS } from './constants';
 
 interface NodeBounds {
   width: number;
@@ -19,16 +20,16 @@ export class DungeonRenderer {
 
   private getNodeBounds(node: RoomNode): NodeBounds {
     return {
-      width: node.size || 12, // Default to 12 if size not specified
-      height: node.size || 12,
+      width: node.size || DUNGEON_CONSTANTS.NODE_SIZE,
+      height: node.size || DUNGEON_CONSTANTS.NODE_SIZE,
       shape: 'circle',
     };
   }
 
   private getConnectorBounds(link: RoomLink): NodeBounds {
     return {
-      width: 6, // Connectors are always small
-      height: 6,
+      width: DUNGEON_CONSTANTS.CONNECTOR_SIZE,
+      height: DUNGEON_CONSTANTS.CONNECTOR_SIZE,
       shape: link.type === 'door' ? 'circle' : 'rectangle',
     };
   }
@@ -66,90 +67,62 @@ export class DungeonRenderer {
       };
     }
 
-    // Get all primary connections for this room
-    const primaryDirections = new Set<number>();
-    const links = (this.graph?.links || []).filter(
-      (l) => (l.source === source || l.target === source) && l.type === 'door'
+    // Get all existing connections for this room
+    const existingLinks = (this.graph?.links || []).filter(
+      (l) =>
+        (l.source === source || l.target === source) && l.type === 'secondary'
     );
 
-    // Find the angles used by primary connections
-    links.forEach((l) => {
+    // Calculate used directions and positions
+    const usedPositions = new Set<string>();
+    existingLinks.forEach((l) => {
       const otherNode = l.source === source ? l.target : l.source;
-      const linkDx = otherNode.x - source.x;
-      const linkDy = otherNode.y - source.y;
-      if (Math.abs(linkDx) > Math.abs(linkDy)) {
-        primaryDirections.add(linkDx > 0 ? 0 : Math.PI); // East or West
-      } else {
-        primaryDirections.add(linkDy > 0 ? Math.PI / 2 : -Math.PI / 2); // South or North
-      }
+      const endpoint = this.calculateEndpoint(source, otherNode, bounds);
+      usedPositions.add(`${Math.round(endpoint.x)},${Math.round(endpoint.y)}`);
     });
 
-    // Calculate center of the dungeon
-    const rooms = this.graph?.rooms || [];
-    const centerX = d3.mean(rooms, (r) => r.x) || 0;
-    const centerY = d3.mean(rooms, (r) => r.y) || 0;
+    // Available cardinal directions (North, South, East, West)
+    const directions = [
+      { angle: -Math.PI / 2, name: 'N' }, // North
+      { angle: Math.PI / 2, name: 'S' }, // South
+      { angle: 0, name: 'E' }, // East
+      { angle: Math.PI, name: 'W' }, // West
+    ];
 
-    // Available cardinal directions
-    const angles = [
-      Math.PI / 2, // South
-      -Math.PI / 2, // North
-      0, // East
-      Math.PI, // West
-    ].filter((angle) => !primaryDirections.has(angle));
+    // Calculate scores for each direction
+    const scoredDirections = directions.map((dir) => {
+      const intersectDistance = bounds.width / 2;
+      const x = source.x + Math.cos(dir.angle) * intersectDistance;
+      const y = source.y + Math.sin(dir.angle) * intersectDistance;
+      const posKey = `${Math.round(x)},${Math.round(y)}`;
 
-    // If no free directions, fall back to the original direction
-    if (angles.length === 0) {
-      if (Math.abs(dx) > Math.abs(dy)) {
-        angles.push(dx > 0 ? 0 : Math.PI);
-      } else {
-        angles.push(dy > 0 ? Math.PI / 2 : -Math.PI / 2);
-      }
-    }
+      // Check if position is already used
+      const isUsed = usedPositions.has(posKey);
 
-    // Sort angles by:
-    // 1. How well they point outward from center
-    // 2. How well they match the target direction
-    const targetAngle = Math.atan2(dy, dx);
-    angles.sort((a, b) => {
-      // Calculate endpoints for each angle
-      const pointA = {
-        x: source.x + Math.cos(a) * bounds.width,
-        y: source.y + Math.sin(a) * bounds.width,
+      // Calculate angle to target
+      const targetAngle = Math.atan2(dy, dx);
+
+      // Calculate angle difference (0 to PI)
+      let angleDiff = Math.abs(dir.angle - targetAngle);
+      angleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff);
+
+      // Score based on direction to target and whether position is used
+      // Prefer directions that point towards the target
+      return {
+        ...dir,
+        x,
+        y,
+        score: isUsed ? -1000 : (Math.PI - angleDiff) * 10,
       };
-      const pointB = {
-        x: source.x + Math.cos(b) * bounds.width,
-        y: source.y + Math.sin(b) * bounds.width,
-      };
-
-      // Calculate distances from center for each endpoint
-      const distA = Math.sqrt(
-        (pointA.x - centerX) ** 2 + (pointA.y - centerY) ** 2
-      );
-      const distB = Math.sqrt(
-        (pointB.x - centerX) ** 2 + (pointB.y - centerY) ** 2
-      );
-
-      // Calculate how well each matches the target direction
-      const targetScoreA = Math.abs(
-        ((a - targetAngle + 3 * Math.PI) % (2 * Math.PI)) - Math.PI
-      );
-      const targetScoreB = Math.abs(
-        ((b - targetAngle + 3 * Math.PI) % (2 * Math.PI)) - Math.PI
-      );
-
-      // Combine scores - prefer greater distance from center and better target match
-      const scoreA = distA - targetScoreA * 20;
-      const scoreB = distB - targetScoreB * 20;
-
-      return scoreB - scoreA; // Higher score first
     });
 
-    const intersectDistance =
-      bounds.shape === 'circle' ? bounds.width / 2 : bounds.width / 2;
+    // Sort by score and pick best available direction
+    scoredDirections.sort((a, b) => b.score - a.score);
+    const bestDir = scoredDirections[0];
 
     return {
-      x: source.x + Math.cos(angles[0]) * intersectDistance,
-      y: source.y + Math.sin(angles[0]) * intersectDistance,
+      x: bestDir.x,
+      y: bestDir.y,
     };
   }
 
@@ -183,61 +156,152 @@ export class DungeonRenderer {
     const { grid, cellSize } = navigationData;
     const pathfinder = new AStarGrid(grid);
 
+    // Render primary links first, then secondary
+    const primaryLinks = graph.links.filter((l) => l.type === 'door');
+    const secondaryLinks = graph.links.filter((l) => l.type === 'secondary');
+
+    // Function to create path
+    const createPath = (d: RoomLink) => {
+      // Calculate proper start and end points for all connection types
+      const start = this.calculateEndpoint(
+        d.source,
+        d.target,
+        this.getNodeBounds(d.source),
+        d
+      );
+      const end = this.calculateEndpoint(
+        d.target,
+        d.source,
+        this.getNodeBounds(d.target),
+        d
+      );
+
+      if (d.type === 'secondary') {
+        // Check if there's a primary connection between these rooms
+        const primaryConnection = graph.links.find(
+          (link) =>
+            link.type === 'door' &&
+            ((link.source === d.source && link.target === d.target) ||
+              (link.source === d.target && link.target === d.source))
+        );
+
+        const offset = 20; // Base offset in pixels
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const useVerticalFirst = Math.abs(dy) > Math.abs(dx);
+
+        if (primaryConnection) {
+          // Calculate primary connection endpoints
+          const primaryStart = this.calculateEndpoint(
+            primaryConnection.source,
+            primaryConnection.target,
+            this.getNodeBounds(primaryConnection.source)
+          );
+          const primaryEnd = this.calculateEndpoint(
+            primaryConnection.target,
+            primaryConnection.source,
+            this.getNodeBounds(primaryConnection.target)
+          );
+
+          // Determine if our start or end points coincide with primary connection
+          const startCoincident =
+            Math.abs(start.x - primaryStart.x) < 1 ||
+            Math.abs(start.x - primaryEnd.x) < 1;
+          const endCoincident =
+            Math.abs(end.x - primaryStart.x) < 1 ||
+            Math.abs(end.x - primaryEnd.x) < 1;
+
+          if (useVerticalFirst) {
+            const offsetX = dx > 0 ? offset : -offset;
+            // Adjust start and end X positions if they coincide with primary connection
+            const startX = startCoincident
+              ? start.x + offsetX * 2
+              : start.x + offsetX;
+            const endX = endCoincident ? end.x + offsetX * 2 : end.x + offsetX;
+
+            return `M ${startX + offsetX} ${start.y + offsetY}
+                    L ${startX + offsetX} ${end.y + offsetY}
+                    L ${endX} ${end.y + offsetY}`;
+          } else {
+            const offsetY = dy > 0 ? offset : -offset;
+            // Adjust start and end Y positions if they coincide with primary connection
+            const startY = startCoincident
+              ? start.y + offsetY * 2
+              : start.y + offsetY;
+            const endY = endCoincident ? end.y + offsetY * 2 : end.y + offsetY;
+
+            return `M ${start.x + offsetX} ${startY + offsetY}
+                    L ${end.x + offsetX} ${startY + offsetY}
+                    L ${end.x + offsetX} ${endY}`;
+          }
+        } else {
+          // Standard L-shaped path for non-coincident connections
+          if (useVerticalFirst) {
+            return `M ${start.x + offsetX} ${start.y + offsetY}
+                    L ${start.x + offsetX} ${end.y + offsetY}
+                    L ${end.x + offsetX} ${end.y + offsetY}`;
+          } else {
+            return `M ${start.x + offsetX} ${start.y + offsetY}
+                    L ${end.x + offsetX} ${start.y + offsetY}
+                    L ${end.x + offsetX} ${end.y + offsetY}`;
+          }
+        }
+      }
+
+      // Primary connection path code
+      const sourceX = Math.floor(d.source.x / cellSize);
+      const sourceY = Math.floor(d.source.y / cellSize);
+      const targetX = Math.floor(d.target.x / cellSize);
+      const targetY = Math.floor(d.target.y / cellSize);
+
+      // Find path using A*
+      const path = pathfinder.findPath(sourceX, sourceY, targetX, targetY);
+
+      if (path.length === 0) {
+        return `M ${start.x + offsetX} ${start.y + offsetY} 
+                L ${end.x + offsetX} ${end.y + offsetY}`;
+      }
+
+      // Start from the calculated start point
+      const pathCommands = [`M ${start.x + offsetX} ${start.y + offsetY}`];
+
+      // Add path points
+      path.slice(1, -1).forEach(([x, y]) => {
+        const px = x * cellSize + cellSize / 2 + offsetX;
+        const py = y * cellSize + cellSize / 2 + offsetY;
+        pathCommands.push(`L ${px} ${py}`);
+      });
+
+      // End at the calculated end point
+      pathCommands.push(`L ${end.x + offsetX} ${end.y + offsetY}`);
+
+      return pathCommands.join(' ');
+    };
+
+    // Render primary links
     linkGroup
-      .selectAll<SVGPathElement, RoomLink>('path')
-      .data(graph.links)
+      .selectAll<SVGPathElement, RoomLink>('path.primary')
+      .data(primaryLinks)
       .enter()
       .append('path')
-      .attr('stroke', (d) => (d.type === 'door' ? 'black' : 'red'))
-      .attr('stroke-width', (d) => (d.type === 'door' ? 2 : 1))
+      .attr('class', 'primary')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 2)
       .attr('fill', 'none')
-      .attr('stroke-dasharray', (d) =>
-        d.type === 'secondary' ? '4,4' : 'none'
-      )
-      .attr('d', (d) => {
-        // Calculate proper start and end points
-        const start = this.calculateEndpoint(
-          d.target,
-          d.source,
-          this.getNodeBounds(d.target),
-          d
-        );
-        const end = this.calculateEndpoint(
-          d.source,
-          d.target,
-          this.getNodeBounds(d.source),
-          d
-        );
+      .attr('d', createPath);
 
-        // Convert room coordinates to grid coordinates
-        const sourceX = Math.floor(d.source.x / cellSize);
-        const sourceY = Math.floor(d.source.y / cellSize);
-        const targetX = Math.floor(d.target.x / cellSize);
-        const targetY = Math.floor(d.target.y / cellSize);
-
-        // Find path using A*
-        const path = pathfinder.findPath(sourceX, sourceY, targetX, targetY);
-
-        if (path.length === 0) {
-          return `M ${start.x + offsetX} ${start.y + offsetY} 
-                  L ${end.x + offsetX} ${end.y + offsetY}`;
-        }
-
-        // Start from the calculated start point
-        const pathCommands = [`M ${start.x + offsetX} ${start.y + offsetY}`];
-
-        // Add path points
-        path.slice(1, -1).forEach(([x, y]) => {
-          const px = x * cellSize + cellSize / 2 + offsetX;
-          const py = y * cellSize + cellSize / 2 + offsetY;
-          pathCommands.push(`L ${px} ${py}`);
-        });
-
-        // End at the calculated end point
-        pathCommands.push(`L ${end.x + offsetX} ${end.y + offsetY}`);
-
-        return pathCommands.join(' ');
-      });
+    // Render secondary links
+    linkGroup
+      .selectAll<SVGPathElement, RoomLink>('path.secondary')
+      .data(secondaryLinks)
+      .enter()
+      .append('path')
+      .attr('class', 'secondary')
+      .attr('stroke', 'red')
+      .attr('stroke-width', 1)
+      .attr('fill', 'none')
+      .attr('stroke-dasharray', '4,4')
+      .attr('d', createPath);
 
     return linkGroup;
   }
@@ -379,23 +443,36 @@ export class DungeonRenderer {
   }
 
   private renderRooms(graph: DungeonGraph, offsetX: number, offsetY: number) {
-    return (
-      this.svg
-        .append('g')
-        .selectAll<SVGRectElement, RoomNode>('rect')
-        .data(graph.rooms)
-        .enter()
-        .append('rect')
-        .attr('width', (d) => this.getNodeBounds(d).width)
-        .attr('height', (d) => this.getNodeBounds(d).height)
-        .attr('fill', 'white')
-        .attr('stroke', 'black')
-        // Adjust x and y to account for rectangle dimensions
-        .attr('x', (d) => d.x + offsetX - this.getNodeBounds(d).width / 2)
-        .attr('y', (d) => d.y + offsetY - this.getNodeBounds(d).height / 2)
-        .append('title')
-        .text((d: RoomNode) => `${d.name} (${d.id})`)
-    );
+    // Create a group for each room that will contain both circle and text
+    const roomGroups = this.svg
+      .append('g')
+      .selectAll<SVGGElement, RoomNode>('g')
+      .data(graph.rooms)
+      .enter()
+      .append('g');
+
+    // Add circles
+    roomGroups
+      .append('circle')
+      .attr('r', (d) => this.getNodeBounds(d).width / 2)
+      .attr('fill', 'white')
+      .attr('stroke', 'black')
+      .attr('cx', (d) => d.x + offsetX)
+      .attr('cy', (d) => d.y + offsetY)
+      .append('title')
+      .text((d: RoomNode) => `${d.name} (${d.id})`);
+
+    // Add text labels inside circles
+    roomGroups
+      .append('text')
+      .attr('x', (d) => d.x + offsetX)
+      .attr('y', (d) => d.y + offsetY)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', '10px')
+      .text((d) => d.id.toString());
+
+    return roomGroups;
   }
 
   render(graph: DungeonGraph, navigationData: NavigationGridData): void {
@@ -411,24 +488,8 @@ export class DungeonRenderer {
     this.renderSecondaryConnectors(linkGroup, graph, offsetX, offsetY);
   }
 
-  // Optional: Add debug rendering
+  // Remove the debug render method since we now show IDs by default
   renderDebug(graph: DungeonGraph): void {
     this.render(graph, { grid: [], cellSize: 1 });
-
-    const svgWidth = +this.svg.attr('width');
-    const svgHeight = +this.svg.attr('height');
-
-    // Add room IDs as labels
-    this.svg
-      .append('g')
-      .selectAll('text')
-      .data(graph.rooms)
-      .enter()
-      .append('text')
-      .attr('x', (d) => d.x)
-      .attr('y', (d) => d.y - 15)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', '10px')
-      .text((d) => d.id);
   }
 }

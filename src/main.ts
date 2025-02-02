@@ -3,6 +3,7 @@ import { DungeonRenderer } from './renderer';
 import type { GenerationConfig } from './types';
 import { PRNG } from './prng';
 import { Dice } from './dice';
+import { DUNGEON_CONSTANTS } from './constants';
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
 
@@ -30,13 +31,13 @@ const numRooms = Dice.roll(6, 4).total; // 4d6 rooms
 
 const config: GenerationConfig = {
   numRooms,
-  dungeonWidth: numRooms * 40, // Scale width based on number of rooms
-  dungeonHeight: numRooms * 40, // Scale height based on number of rooms
+  dungeonWidth: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
+  dungeonHeight: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
   branchingFactor: Dice.roll(100).total, // d100: higher means more linear
   directionalBias: Dice.roll(100).total, // d100: higher means more likely to continue same direction
   minSecondaryLinks: Dice.roll(2).total, // 1d2 minimum secondary connections
   maxSecondaryLinks: Dice.roll(2).total + 2, // 1d2+2 maximum secondary connections
-  cellSize: 40,
+  cellSize: DUNGEON_CONSTANTS.CELL_SIZE,
 };
 
 console.log('Generating dungeon with config:', config);

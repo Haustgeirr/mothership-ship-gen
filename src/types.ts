@@ -1,7 +1,7 @@
 import type { SimulationNodeDatum } from 'd3';
 
 export interface RoomNode extends SimulationNodeDatum {
-  id: string;
+  id: number;
   name: string;
   x: number;
   y: number;

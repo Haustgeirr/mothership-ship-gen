@@ -8,6 +8,7 @@ import type {
 } from './types';
 import { Dice } from './dice';
 import type { GridCell } from './AStarGrid';
+import { DUNGEON_CONSTANTS } from './constants';
 
 export class DungeonGenerator {
   private cellSize: number;
@@ -21,8 +22,8 @@ export class DungeonGenerator {
     { x: -1, y: 0 }, // West
   ] as const;
 
-  constructor(cellSize: number = 40) {
-    this.cellSize = cellSize;
+  constructor() {
+    this.cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
   }
 
   private isPositionOccupied(
@@ -67,7 +68,7 @@ export class DungeonGenerator {
 
   private createRoom(id: number, x: number, y: number): RoomNode {
     return {
-      id: `room-${id}`,
+      id: id,
       name: `Room ${id}`,
       x: x * this.cellSize,
       y: y * this.cellSize,
