@@ -2,6 +2,7 @@ import * as d3 from 'd3';
 import type { DungeonGraph, RoomNode, RoomLink } from './types';
 import { AStarGrid, type GridCell } from './AStarGrid';
 import { DUNGEON_CONSTANTS } from './constants';
+import { DungeonGenerator } from './generator';
 
 interface NodeBounds {
   width: number;
@@ -146,6 +147,137 @@ export class DungeonRenderer {
     };
   }
 
+  private findNearestWalkableCell(
+    x: number,
+    y: number,
+    grid: GridCell[][]
+  ): { x: number; y: number } | null {
+    // Check adjacent cells in a spiral pattern
+    const checked = new Set<string>();
+    const toCheck: Array<[number, number, number]> = [[x, y, 0]]; // x, y, distance
+
+    while (toCheck.length > 0) {
+      const [cx, cy, dist] = toCheck.shift()!;
+      const key = `${cx},${cy}`;
+
+      if (checked.has(key)) continue;
+      checked.add(key);
+
+      // Check if this cell is valid and walkable
+      if (cx >= 0 && cy >= 0 && cx < grid[0].length && cy < grid.length) {
+        if (grid[cy][cx].walkable) {
+          return { x: cx, y: cy };
+        }
+
+        // Add adjacent cells with increased distance
+        toCheck.push(
+          [cx + 1, cy, dist + 1],
+          [cx - 1, cy, dist + 1],
+          [cx, cy + 1, dist + 1],
+          [cx, cy - 1, dist + 1]
+        );
+
+        // Sort by distance to prioritize closer cells
+        toCheck.sort((a, b) => a[2] - b[2]);
+      }
+    }
+
+    return null;
+  }
+
+  private calculateSecondaryPath(
+    source: RoomNode,
+    target: RoomNode,
+    navigationData: NavigationGridData,
+    offsetX: number,
+    offsetY: number
+  ): string {
+    const { grid, cellSize } = navigationData;
+    const pathfinder = new AStarGrid(grid);
+
+    // Get start and end points in grid coordinates
+    const sourceX = Math.floor(source.x / cellSize);
+    const sourceY = Math.floor(source.y / cellSize);
+    const targetX = Math.floor(target.x / cellSize);
+    const targetY = Math.floor(target.y / cellSize);
+
+    // Find nearest walkable cells to start and end points
+    const walkableStart = this.findNearestWalkableCell(sourceX, sourceY, grid);
+    const walkableEnd = this.findNearestWalkableCell(targetX, targetY, grid);
+
+    if (!walkableStart || !walkableEnd) {
+      return `M ${source.x + offsetX} ${source.y + offsetY} 
+              L ${target.x + offsetX} ${target.y + offsetY}`;
+    }
+
+    console.log('Secondary path:', {
+      source: {
+        id: source.id,
+        worldX: source.x,
+        worldY: source.y,
+        gridX: sourceX,
+        gridY: sourceY,
+      },
+      target: {
+        id: target.id,
+        worldX: target.x,
+        worldY: target.y,
+        gridX: targetX,
+        gridY: targetY,
+      },
+      walkableStart,
+      walkableEnd,
+      cellSize,
+    });
+
+    // Find path between walkable cells
+    const path = pathfinder.findPath(
+      walkableStart.x,
+      walkableStart.y,
+      walkableEnd.x,
+      walkableEnd.y,
+      true
+    );
+
+    // Convert grid coordinates to world coordinates
+    const worldPath = path.map(([x, y]) => ({
+      x: x * cellSize + offsetX - cellSize / 2, // Match grid cell positioning
+      y: y * cellSize + offsetY - cellSize / 2, // Match grid cell positioning
+    }));
+
+    console.log('Path points:', {
+      grid: path,
+      world: worldPath,
+    });
+
+    // Create path commands
+    const pathCommands = [`M ${source.x + offsetX} ${source.y + offsetY}`];
+
+    // Add first walkable cell
+    pathCommands.push(
+      `L ${walkableStart.x * cellSize + offsetX - cellSize / 2} ${
+        walkableStart.y * cellSize + offsetY - cellSize / 2
+      }`
+    );
+
+    // Add intermediate path points
+    worldPath.slice(1, -1).forEach((point) => {
+      pathCommands.push(`L ${point.x} ${point.y}`); // Points already include offset
+    });
+
+    // Add last walkable cell
+    pathCommands.push(
+      `L ${walkableEnd.x * cellSize + offsetX - cellSize / 2} ${
+        walkableEnd.y * cellSize + offsetY - cellSize / 2
+      }`
+    );
+
+    // End at target
+    pathCommands.push(`L ${target.x + offsetX} ${target.y + offsetY}`);
+
+    return pathCommands.join(' ');
+  }
+
   private renderLinks(
     graph: DungeonGraph,
     offsetX: number,
@@ -162,6 +294,18 @@ export class DungeonRenderer {
 
     // Function to create path
     const createPath = (d: RoomLink) => {
+      if (d.type === 'secondary') {
+        // Use A* pathfinding for secondary connections
+        const path = this.calculateSecondaryPath(
+          d.source,
+          d.target,
+          navigationData,
+          offsetX,
+          offsetY
+        );
+        return path;
+      }
+
       // Calculate proper start and end points for all connection types
       const start = this.calculateEndpoint(
         d.source,
@@ -176,86 +320,20 @@ export class DungeonRenderer {
         d
       );
 
-      if (d.type === 'secondary') {
-        // Check if there's a primary connection between these rooms
-        const primaryConnection = graph.links.find(
-          (link) =>
-            link.type === 'door' &&
-            ((link.source === d.source && link.target === d.target) ||
-              (link.source === d.target && link.target === d.source))
-        );
-
-        const offset = 20; // Base offset in pixels
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const useVerticalFirst = Math.abs(dy) > Math.abs(dx);
-
-        if (primaryConnection) {
-          // Calculate primary connection endpoints
-          const primaryStart = this.calculateEndpoint(
-            primaryConnection.source,
-            primaryConnection.target,
-            this.getNodeBounds(primaryConnection.source)
-          );
-          const primaryEnd = this.calculateEndpoint(
-            primaryConnection.target,
-            primaryConnection.source,
-            this.getNodeBounds(primaryConnection.target)
-          );
-
-          // Determine if our start or end points coincide with primary connection
-          const startCoincident =
-            Math.abs(start.x - primaryStart.x) < 1 ||
-            Math.abs(start.x - primaryEnd.x) < 1;
-          const endCoincident =
-            Math.abs(end.x - primaryStart.x) < 1 ||
-            Math.abs(end.x - primaryEnd.x) < 1;
-
-          if (useVerticalFirst) {
-            const offsetX = dx > 0 ? offset : -offset;
-            // Adjust start and end X positions if they coincide with primary connection
-            const startX = startCoincident
-              ? start.x + offsetX * 2
-              : start.x + offsetX;
-            const endX = endCoincident ? end.x + offsetX * 2 : end.x + offsetX;
-
-            return `M ${startX + offsetX} ${start.y + offsetY}
-                    L ${startX + offsetX} ${end.y + offsetY}
-                    L ${endX} ${end.y + offsetY}`;
-          } else {
-            const offsetY = dy > 0 ? offset : -offset;
-            // Adjust start and end Y positions if they coincide with primary connection
-            const startY = startCoincident
-              ? start.y + offsetY * 2
-              : start.y + offsetY;
-            const endY = endCoincident ? end.y + offsetY * 2 : end.y + offsetY;
-
-            return `M ${start.x + offsetX} ${startY + offsetY}
-                    L ${end.x + offsetX} ${startY + offsetY}
-                    L ${end.x + offsetX} ${endY}`;
-          }
-        } else {
-          // Standard L-shaped path for non-coincident connections
-          if (useVerticalFirst) {
-            return `M ${start.x + offsetX} ${start.y + offsetY}
-                    L ${start.x + offsetX} ${end.y + offsetY}
-                    L ${end.x + offsetX} ${end.y + offsetY}`;
-          } else {
-            return `M ${start.x + offsetX} ${start.y + offsetY}
-                    L ${end.x + offsetX} ${start.y + offsetY}
-                    L ${end.x + offsetX} ${end.y + offsetY}`;
-          }
-        }
-      }
-
       // Primary connection path code
       const sourceX = Math.floor(d.source.x / cellSize);
       const sourceY = Math.floor(d.source.y / cellSize);
       const targetX = Math.floor(d.target.x / cellSize);
       const targetY = Math.floor(d.target.y / cellSize);
 
-      // Find path using A*
-      const path = pathfinder.findPath(sourceX, sourceY, targetX, targetY);
+      // Find path using A* without debug
+      const path = pathfinder.findPath(
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        false
+      );
 
       if (path.length === 0) {
         return `M ${start.x + offsetX} ${start.y + offsetY} 
@@ -475,21 +553,64 @@ export class DungeonRenderer {
     return roomGroups;
   }
 
+  private renderNavigationGrid(
+    navigationData: NavigationGridData,
+    offsetX: number,
+    offsetY: number
+  ) {
+    const { grid, cellSize } = navigationData;
+
+    // Create a group for the grid
+    const gridGroup = this.svg.append('g');
+
+    // Render each cell
+    for (let y = 0; y < grid.length; y++) {
+      for (let x = 0; x < grid[y].length; x++) {
+        const cell = grid[y][x];
+        gridGroup
+          .append('rect')
+          .attr('x', x * cellSize + offsetX - cellSize / 2)
+          .attr('y', y * cellSize + offsetY - cellSize / 2)
+          .attr('width', cellSize)
+          .attr('height', cellSize)
+          .attr(
+            'fill',
+            cell.walkable ? 'rgba(0, 255, 0, 0.1)' : 'rgba(255, 0, 0, 0.1)'
+          )
+          .attr('stroke', 'rgba(0, 0, 0, 0.1)')
+          .attr('stroke-width', 1);
+      }
+    }
+
+    // Return the group so it can be placed behind other elements
+    return gridGroup;
+  }
+
   render(graph: DungeonGraph, navigationData: NavigationGridData): void {
     this.svg.selectAll('*').remove();
     this.graph = graph;
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
 
-    // Render rooms first so they appear behind everything else
+    // Render navigation grid first so it appears behind everything
+    const gridGroup = this.renderNavigationGrid(
+      navigationData,
+      offsetX,
+      offsetY
+    );
+
+    // Render rooms and links on top of the grid
     this.renderRooms(graph, offsetX, offsetY);
     const linkGroup = this.renderLinks(graph, offsetX, offsetY, navigationData);
     this.renderDoorConnectors(linkGroup, graph, offsetX, offsetY);
     this.renderSecondaryConnectors(linkGroup, graph, offsetX, offsetY);
+
+    // Ensure grid stays behind everything
+    gridGroup.lower();
   }
 
-  // Remove the debug render method since we now show IDs by default
-  renderDebug(graph: DungeonGraph): void {
-    this.render(graph, { grid: [], cellSize: 1 });
+  // Update the debug render to show both room IDs and navigation grid
+  renderDebug(graph: DungeonGraph, navigationData: NavigationGridData): void {
+    this.render(graph, navigationData);
   }
 }

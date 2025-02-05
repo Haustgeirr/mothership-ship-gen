@@ -33,10 +33,19 @@ export class AStarGrid {
     startX: number,
     startY: number,
     endX: number,
-    endY: number
+    endY: number,
+    debug: boolean = false
   ): Point[] {
     const open: AStarNode[] = [];
     const closed = new Set<string>();
+
+    if (debug) {
+      console.log('A* pathfinding:', {
+        start: { x: startX, y: startY },
+        end: { x: endX, y: endY },
+        gridSize: { rows: this.rows, cols: this.cols },
+      });
+    }
 
     const startNode: AStarNode = {
       x: startX,
@@ -51,14 +60,29 @@ export class AStarGrid {
     const key = (x: number, y: number) => `${x},${y}`;
 
     while (open.length > 0) {
-      // Sort or use a priority queue: picking the lowest f-cost node
-      open.sort((a, b) => a.f - b.f);
-      const current = open.shift()!;
-      closed.add(key(current.x, current.y));
+      // Sort by f-cost, then h-cost for ties
+      open.sort((a, b) => {
+        if (a.f === b.f) {
+          return a.h - b.h; // Prefer nodes closer to goal
+        }
+        return a.f - b.f;
+      });
 
-      // Goal check
+      const current = open.shift()!;
+      const currentKey = key(current.x, current.y);
+
+      if (debug) {
+        console.log('Current node:', {
+          x: current.x,
+          y: current.y,
+          g: current.g,
+          h: current.h,
+          f: current.f,
+        });
+      }
+
+      // Goal check first
       if (current.x === endX && current.y === endY) {
-        // Reconstruct path
         const path: Point[] = [];
         let node: typeof current | undefined = current;
         while (node) {
@@ -68,7 +92,9 @@ export class AStarGrid {
         return path.reverse();
       }
 
-      // Explore neighbors (4-directional)
+      closed.add(currentKey);
+
+      // Explore neighbors
       const neighbors = [
         [current.x + 1, current.y],
         [current.x - 1, current.y],
@@ -77,40 +103,56 @@ export class AStarGrid {
       ];
 
       for (const [nx, ny] of neighbors) {
+        const neighborKey = key(nx, ny);
+
         if (
           nx < 0 ||
           ny < 0 ||
           nx >= this.cols ||
           ny >= this.rows ||
           !this.grid[ny][nx].walkable ||
-          closed.has(key(nx, ny))
+          closed.has(neighborKey)
         ) {
+          if (debug) {
+            console.log('Skipping neighbor:', {
+              x: nx,
+              y: ny,
+              reason:
+                nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows
+                  ? 'out of bounds'
+                  : !this.grid[ny][nx].walkable
+                  ? 'not walkable'
+                  : 'already explored',
+            });
+          }
           continue;
         }
 
-        const gCost = current.g + 1; // Step cost is 1
+        const gCost = current.g + 1;
         const hCost = this.heuristic(nx, ny, endX, endY);
         const fCost = gCost + hCost;
-        const existing = open.find((o) => o.x === nx && o.y === ny);
 
-        if (!existing) {
-          open.push({
-            x: nx,
-            y: ny,
-            g: gCost,
-            h: hCost,
-            f: fCost,
-            parent: current,
-          });
-        } else if (gCost < existing.g) {
-          existing.g = gCost;
-          existing.f = fCost;
-          existing.parent = current;
+        const existing = open.find((o) => o.x === nx && o.y === ny);
+        if (!existing || gCost < existing.g) {
+          // Add or update node
+          if (existing) {
+            existing.g = gCost;
+            existing.f = fCost;
+            existing.parent = current;
+          } else {
+            open.push({
+              x: nx,
+              y: ny,
+              g: gCost,
+              h: hCost,
+              f: fCost,
+              parent: current,
+            });
+          }
         }
       }
     }
 
-    // No path found
     return [];
   }
 }

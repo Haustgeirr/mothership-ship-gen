@@ -235,46 +235,64 @@ export class DungeonGenerator {
     const width = Math.ceil(this.dungeonWidth / this.cellSize);
     const height = Math.ceil(this.dungeonHeight / this.cellSize);
 
-    // Initialize grid with unwalkable cells
+    // Initialize grid with all cells walkable (empty space is walkable)
     const grid: GridCell[][] = Array(height)
       .fill(null)
       .map(() =>
         Array(width)
           .fill(null)
-          .map(() => ({ walkable: false }))
+          .map(() => ({ walkable: true }))
       );
 
-    // Mark room cells as walkable
+    // Debug: Count walkable cells before setting
+    let walkableCount = 0;
+    grid.forEach((row) =>
+      row.forEach((cell) => {
+        if (cell.walkable) walkableCount++;
+      })
+    );
+    console.log('Initial walkable cells:', walkableCount);
+
+    // Mark room cells as non-walkable (rooms block movement)
     for (const room of this.graph.rooms) {
       const gridX = Math.floor(room.x / this.cellSize);
       const gridY = Math.floor(room.y / this.cellSize);
-      grid[gridY][gridX].walkable = true;
+      grid[gridY][gridX].walkable = false;
     }
 
-    // Mark corridors between linked rooms as walkable
+    // Mark corridors as non-walkable (corridors block movement)
     for (const link of this.graph.links) {
       const startX = Math.floor(link.source.x / this.cellSize);
       const startY = Math.floor(link.source.y / this.cellSize);
       const endX = Math.floor(link.target.x / this.cellSize);
       const endY = Math.floor(link.target.y / this.cellSize);
 
-      // Mark cells between rooms as walkable
+      // Mark cells between rooms as non-walkable
       if (startX === endX) {
         // Vertical corridor
         const minY = Math.min(startY, endY);
         const maxY = Math.max(startY, endY);
         for (let y = minY; y <= maxY; y++) {
-          grid[y][startX].walkable = true;
+          grid[y][startX].walkable = false;
         }
       } else if (startY === endY) {
         // Horizontal corridor
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
         for (let x = minX; x <= maxX; x++) {
-          grid[startY][x].walkable = true;
+          grid[startY][x].walkable = false;
         }
       }
     }
+
+    // Debug: Final count of walkable cells
+    walkableCount = 0;
+    grid.forEach((row) =>
+      row.forEach((cell) => {
+        if (cell.walkable) walkableCount++;
+      })
+    );
+    console.log('Final walkable cells:', walkableCount);
 
     return { grid, cellSize: this.cellSize };
   }

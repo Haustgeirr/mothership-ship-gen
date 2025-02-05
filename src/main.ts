@@ -13,8 +13,8 @@ if (!svgElement) {
 
 // Initialize PRNG, generator and renderer
 // const seed = 1738277232585;
-// const seed = 1738405946252;
-const seed = Date.now();
+const seed = 1738405946252;
+// const seed = Date.now();
 new PRNG(seed);
 
 // Update seed display
@@ -54,5 +54,6 @@ if (generator.validateDungeon(dungeon)) {
   renderer.render(dungeon, navigationData);
 } else {
   console.error('Generated dungeon is not fully connected');
-  renderer.renderDebug(dungeon); // Use debug render to see the issue
+  const navigationData = generator.createNavigationGrid();
+  renderer.renderDebug(dungeon, navigationData); // Pass navigation data to debug render
 }
