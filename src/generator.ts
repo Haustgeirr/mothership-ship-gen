@@ -205,9 +205,9 @@ export class DungeonGenerator {
   }
 
   validateDungeon(graph: DungeonGraph): boolean {
-    const visited = new Set<string>();
+    const visited = new Set<number>();
 
-    const dfs = (roomId: string): void => {
+    const dfs = (roomId: number): void => {
       if (visited.has(roomId)) return;
       visited.add(roomId);
 
@@ -222,7 +222,7 @@ export class DungeonGenerator {
       neighbors.forEach((neighbor) => dfs(neighbor));
     };
 
-    dfs(graph.rooms[0]?.id || '');
+    dfs(graph.rooms[0]?.id || 0);
 
     return visited.size === graph.rooms.length;
   }
