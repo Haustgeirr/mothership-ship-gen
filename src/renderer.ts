@@ -18,6 +18,7 @@ export interface NavigationGridData {
 export class DungeonRenderer {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private graph: DungeonGraph | null = null;
+  private navigationData: NavigationGridData | null = null;
 
   private getNodeBounds(node: RoomNode): NodeBounds {
     return {
@@ -68,63 +69,91 @@ export class DungeonRenderer {
       };
     }
 
-    // Get all existing connections for this room
-    const existingLinks = (this.graph?.links || []).filter(
-      (l) =>
-        (l.source === source || l.target === source) && l.type === 'secondary'
+    // For secondary connections, determine direction based on the first/last grid cell in path
+    const { grid, cellSize } = this.getNavigationData();
+    const sourceX = Math.floor(source.x / cellSize);
+    const sourceY = Math.floor(source.y / cellSize);
+    const targetX = Math.floor(target.x / cellSize);
+    const targetY = Math.floor(target.y / cellSize);
+
+    const walkableStart = this.findNearestWalkableCell(sourceX, sourceY, grid);
+    const walkableEnd = this.findNearestWalkableCell(targetX, targetY, grid);
+
+    if (!walkableStart || !walkableEnd) {
+      // Fallback to basic direction if no path found
+      return this.calculateBasicEndpoint(source, target, bounds);
+    }
+
+    const path = new AStarGrid(grid).findPath(
+      walkableStart.x,
+      walkableStart.y,
+      walkableEnd.x,
+      walkableEnd.y,
+      false
     );
 
-    // Calculate used directions and positions
-    const usedPositions = new Set<string>();
-    existingLinks.forEach((l) => {
-      const otherNode = l.source === source ? l.target : l.source;
-      const endpoint = this.calculateEndpoint(source, otherNode, bounds);
-      usedPositions.add(`${Math.round(endpoint.x)},${Math.round(endpoint.y)}`);
-    });
+    if (path.length < 2) {
+      return this.calculateBasicEndpoint(source, target, bounds);
+    }
 
-    // Available cardinal directions (North, South, East, West)
-    const directions = [
-      { angle: -Math.PI / 2, name: 'N' }, // North
-      { angle: Math.PI / 2, name: 'S' }, // South
-      { angle: 0, name: 'E' }, // East
-      { angle: Math.PI, name: 'W' }, // West
-    ];
+    // Determine direction based on whether this is source or target node
+    const [firstX, firstY] = path[0];
+    const [secondX, secondY] = path[1];
+    const [lastX, lastY] = path[path.length - 1];
+    const [secondLastX, secondLastY] = path[path.length - 2];
 
-    // Calculate scores for each direction
-    const scoredDirections = directions.map((dir) => {
-      const intersectDistance = bounds.width / 2;
-      const x = source.x + Math.cos(dir.angle) * intersectDistance;
-      const y = source.y + Math.sin(dir.angle) * intersectDistance;
-      const posKey = `${Math.round(x)},${Math.round(y)}`;
+    // Calculate angle based on path direction
+    let angle: number;
+    if (source.x === target.x && source.y === target.y) {
+      // Special case for self-connection
+      angle = Math.PI / 4; // 45 degrees
+    } else if (
+      Math.abs(source.x - target.x) < cellSize &&
+      Math.abs(source.y - target.y) < cellSize
+    ) {
+      // Adjacent nodes
+      angle = Math.atan2(dy, dx);
+    } else {
+      // Use path direction
+      const isSource =
+        Math.abs(source.x / cellSize - firstX) < 2 &&
+        Math.abs(source.y / cellSize - firstY) < 2;
+      if (isSource) {
+        angle = Math.atan2(secondY - firstY, secondX - firstX);
+      } else {
+        angle = Math.atan2(lastY - secondLastY, lastX - secondLastX);
+      }
+    }
 
-      // Check if position is already used
-      const isUsed = usedPositions.has(posKey);
-
-      // Calculate angle to target
-      const targetAngle = Math.atan2(dy, dx);
-
-      // Calculate angle difference (0 to PI)
-      let angleDiff = Math.abs(dir.angle - targetAngle);
-      angleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff);
-
-      // Score based on direction to target and whether position is used
-      // Prefer directions that point towards the target
-      return {
-        ...dir,
-        x,
-        y,
-        score: isUsed ? -1000 : (Math.PI - angleDiff) * 10,
-      };
-    });
-
-    // Sort by score and pick best available direction
-    scoredDirections.sort((a, b) => b.score - a.score);
-    const bestDir = scoredDirections[0];
-
+    const intersectDistance = bounds.width / 2;
     return {
-      x: bestDir.x,
-      y: bestDir.y,
+      x: source.x + Math.cos(angle) * intersectDistance,
+      y: source.y + Math.sin(angle) * intersectDistance,
     };
+  }
+
+  // Helper method for basic endpoint calculation
+  private calculateBasicEndpoint(
+    source: RoomNode,
+    target: RoomNode,
+    bounds: NodeBounds
+  ) {
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const angle = Math.atan2(dy, dx);
+    const intersectDistance = bounds.width / 2;
+    return {
+      x: source.x + Math.cos(angle) * intersectDistance,
+      y: source.y + Math.sin(angle) * intersectDistance,
+    };
+  }
+
+  // Helper to get navigation data (add this near the top of the class)
+  private getNavigationData(): NavigationGridData {
+    if (!this.navigationData) {
+      throw new Error('Navigation data not set');
+    }
+    return this.navigationData;
   }
 
   constructor(svgElement: SVGSVGElement) {
@@ -210,26 +239,6 @@ export class DungeonRenderer {
               L ${target.x + offsetX} ${target.y + offsetY}`;
     }
 
-    console.log('Secondary path:', {
-      source: {
-        id: source.id,
-        worldX: source.x,
-        worldY: source.y,
-        gridX: sourceX,
-        gridY: sourceY,
-      },
-      target: {
-        id: target.id,
-        worldX: target.x,
-        worldY: target.y,
-        gridX: targetX,
-        gridY: targetY,
-      },
-      walkableStart,
-      walkableEnd,
-      cellSize,
-    });
-
     // Find path between walkable cells
     const path = pathfinder.findPath(
       walkableStart.x,
@@ -241,39 +250,42 @@ export class DungeonRenderer {
 
     // Convert grid coordinates to world coordinates
     const worldPath = path.map(([x, y]) => ({
-      x: x * cellSize + offsetX - cellSize / 2, // Match grid cell positioning
-      y: y * cellSize + offsetY - cellSize / 2, // Match grid cell positioning
+      x: x * cellSize + offsetX,
+      y: y * cellSize + offsetY,
     }));
 
-    console.log('Path points:', {
-      grid: path,
-      world: worldPath,
-    });
+    // Calculate angles for start and end adjustments
+    const startAngle = Math.atan2(
+      worldPath[0].y - source.y - offsetY,
+      worldPath[0].x - source.x - offsetX
+    );
+    const endAngle = Math.atan2(
+      target.y + offsetY - worldPath[worldPath.length - 1].y,
+      target.x + offsetX - worldPath[worldPath.length - 1].x
+    );
+
+    // Adjust start and end points to room edges
+    const sourceRadius = this.getNodeBounds(source).width / 2;
+    const targetRadius = this.getNodeBounds(target).width / 2;
+    const adjustedStart = {
+      x: source.x + Math.cos(startAngle) * sourceRadius + offsetX,
+      y: source.y + Math.sin(startAngle) * sourceRadius + offsetY,
+    };
+    const adjustedEnd = {
+      x: target.x - Math.cos(endAngle) * targetRadius + offsetX,
+      y: target.y - Math.sin(endAngle) * targetRadius + offsetY,
+    };
 
     // Create path commands
-    const pathCommands = [`M ${source.x + offsetX} ${source.y + offsetY}`];
-
-    // Add first walkable cell
-    pathCommands.push(
-      `L ${walkableStart.x * cellSize + offsetX - cellSize / 2} ${
-        walkableStart.y * cellSize + offsetY - cellSize / 2
-      }`
-    );
+    const pathCommands = [`M ${adjustedStart.x} ${adjustedStart.y}`];
 
     // Add intermediate path points
-    worldPath.slice(1, -1).forEach((point) => {
-      pathCommands.push(`L ${point.x} ${point.y}`); // Points already include offset
+    worldPath.forEach((point) => {
+      pathCommands.push(`L ${point.x} ${point.y}`);
     });
 
-    // Add last walkable cell
-    pathCommands.push(
-      `L ${walkableEnd.x * cellSize + offsetX - cellSize / 2} ${
-        walkableEnd.y * cellSize + offsetY - cellSize / 2
-      }`
-    );
-
-    // End at target
-    pathCommands.push(`L ${target.x + offsetX} ${target.y + offsetY}`);
+    // End at adjusted target point
+    pathCommands.push(`L ${adjustedEnd.x} ${adjustedEnd.y}`);
 
     return pathCommands.join(' ');
   }
@@ -457,6 +469,64 @@ export class DungeonRenderer {
     offsetX: number,
     offsetY: number
   ) {
+    const { cellSize } = this.getNavigationData();
+
+    // Helper to get the first/last path segment direction and position
+    const getPathEndpoint = (d: RoomLink, isSource: boolean) => {
+      const path = this.calculateSecondaryPath(
+        d.source,
+        d.target,
+        this.getNavigationData(),
+        0,
+        0
+      );
+      const commands = path
+        .split(/([MLZ])/)
+        .filter((cmd) => cmd.trim().length > 0);
+
+      if (isSource) {
+        // Get coordinates from first line segment (M x,y L x2,y2)
+        const moveCmd = commands[1]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const lineCmd = commands[3]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const angle = Math.atan2(
+          lineCmd[1] - moveCmd[1],
+          lineCmd[0] - moveCmd[0]
+        );
+
+        return {
+          x: moveCmd[0],
+          y: moveCmd[1],
+          angle: angle,
+        };
+      } else {
+        // Get coordinates from last line segment
+        const lastCmd = commands[commands.length - 1]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const prevCmd = commands[commands.length - 3]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const angle = Math.atan2(
+          lastCmd[1] - prevCmd[1],
+          lastCmd[0] - prevCmd[0]
+        );
+
+        return {
+          x: lastCmd[0],
+          y: lastCmd[1],
+          angle: angle,
+        };
+      }
+    };
+
     // Source side connectors
     linkGroup
       .selectAll<SVGRectElement, RoomLink>('rect.connector')
@@ -469,23 +539,14 @@ export class DungeonRenderer {
       .attr('fill', 'red')
       .attr('stroke', 'red')
       .attr('stroke-width', 1)
-      .attr('x', (d) => {
-        const start = this.calculateEndpoint(
-          d.target,
-          d.source,
-          this.getNodeBounds(d.target),
-          d
-        );
-        return start.x + offsetX - this.getConnectorBounds(d).width / 2;
-      })
-      .attr('y', (d) => {
-        const start = this.calculateEndpoint(
-          d.target,
-          d.source,
-          this.getNodeBounds(d.target),
-          d
-        );
-        return start.y + offsetY - this.getConnectorBounds(d).height / 2;
+      .attr('transform', (d) => {
+        const endpoint = getPathEndpoint(d, true);
+        const bounds = this.getConnectorBounds(d);
+        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${
+          endpoint.y + offsetY - bounds.height / 2
+        }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${
+          bounds.height / 2
+        })`;
       });
 
     // Target side connectors
@@ -500,23 +561,14 @@ export class DungeonRenderer {
       .attr('fill', 'red')
       .attr('stroke', 'red')
       .attr('stroke-width', 1)
-      .attr('x', (d) => {
-        const end = this.calculateEndpoint(
-          d.source,
-          d.target,
-          this.getNodeBounds(d.source),
-          d
-        );
-        return end.x + offsetX - this.getConnectorBounds(d).width / 2;
-      })
-      .attr('y', (d) => {
-        const end = this.calculateEndpoint(
-          d.source,
-          d.target,
-          this.getNodeBounds(d.source),
-          d
-        );
-        return end.y + offsetY - this.getConnectorBounds(d).height / 2;
+      .attr('transform', (d) => {
+        const endpoint = getPathEndpoint(d, false);
+        const bounds = this.getConnectorBounds(d);
+        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${
+          endpoint.y + offsetY - bounds.height / 2
+        }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${
+          bounds.height / 2
+        })`;
       });
   }
 
@@ -587,6 +639,7 @@ export class DungeonRenderer {
   }
 
   render(graph: DungeonGraph, navigationData: NavigationGridData): void {
+    this.navigationData = navigationData;
     this.svg.selectAll('*').remove();
     this.graph = graph;
 
