@@ -10,6 +10,10 @@ export interface DiceRollResult {
 
 /**
  * A class for handling dice rolls using the PRNG singleton
+ * Example usage:
+ * Dice.roll(6, 2)    // Roll 2d6, returns { total: 7, rolls: [3, 4] }
+ * Dice.roll(20)      // Roll 1d20, returns { total: 15, rolls: [15] }
+ * Dice.d(6)          // Roll 1d6, returns just the number (e.g., 4)
  */
 export class Dice {
   /**
@@ -46,8 +50,3 @@ export class Dice {
     return this.roll(sides).total;
   }
 }
-
-// Example usage:
-// Dice.roll(6, 2)    // Roll 2d6, returns { total: 7, rolls: [3, 4] }
-// Dice.roll(20)      // Roll 1d20, returns { total: 15, rolls: [15] }
-// Dice.d(6)          // Roll 1d6, returns just the number (e.g., 4)

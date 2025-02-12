@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import { PRNG } from './dice';
+import { PRNG } from './prng';
 
 export interface RoomNode extends d3.SimulationNodeDatum {
   id: string;
