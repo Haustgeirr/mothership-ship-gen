@@ -10,7 +10,7 @@ const seedDisplay = document.querySelector<HTMLSpanElement>('#seed-display');
 const stepDisplay = document.querySelector<HTMLSpanElement>('#step-display');
 const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
 const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
-const autoPlayButton = document.querySelector<HTMLButtonElement>('#auto-play');
+const lastStepButton = document.querySelector<HTMLButtonElement>('#last-step');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
 
 if (!svgElement) {
@@ -52,7 +52,6 @@ console.log('Generating dungeon with config:', config);
 
 // Generate the dungeon
 const dungeon = generator.generate(config);
-let autoPlayInterval: number | null = null;
 
 if (generator.validateDungeon(dungeon)) {
   console.log('Generated valid dungeon with:', {
@@ -75,13 +74,6 @@ if (generator.validateDungeon(dungeon)) {
   // Add button event listeners
   if (nextButton) {
     nextButton.addEventListener('click', () => {
-      if (autoPlayInterval) {
-        clearInterval(autoPlayInterval);
-        autoPlayInterval = null;
-        if (autoPlayButton) {
-          autoPlayButton.textContent = 'Auto Play';
-        }
-      }
       renderer.nextStep();
       updateStepDisplay();
     });
@@ -89,48 +81,21 @@ if (generator.validateDungeon(dungeon)) {
 
   if (prevButton) {
     prevButton.addEventListener('click', () => {
-      if (autoPlayInterval) {
-        clearInterval(autoPlayInterval);
-        autoPlayInterval = null;
-        if (autoPlayButton) {
-          autoPlayButton.textContent = 'Auto Play';
-        }
-      }
       renderer.previousStep();
       updateStepDisplay();
     });
   }
 
-  if (autoPlayButton) {
-    autoPlayButton.addEventListener('click', () => {
-      if (autoPlayInterval) {
-        clearInterval(autoPlayInterval);
-        autoPlayInterval = null;
-        autoPlayButton.textContent = 'Auto Play';
-      } else {
-        autoPlayButton.textContent = 'Stop';
-        autoPlayInterval = window.setInterval(() => {
-          const hasMore = renderer.nextStep();
-          updateStepDisplay();
-          if (!hasMore) {
-            clearInterval(autoPlayInterval!);
-            autoPlayInterval = null;
-            autoPlayButton.textContent = 'Auto Play';
-          }
-        }, 500); // Adjust speed as needed
-      }
+  if (lastStepButton) {
+    lastStepButton.addEventListener('click', () => {
+      // Keep stepping until we reach the end
+      while (renderer.nextStep()) {}
+      updateStepDisplay();
     });
   }
 
   if (resetButton) {
     resetButton.addEventListener('click', () => {
-      if (autoPlayInterval) {
-        clearInterval(autoPlayInterval);
-        autoPlayInterval = null;
-        if (autoPlayButton) {
-          autoPlayButton.textContent = 'Auto Play';
-        }
-      }
       renderer.initializeRender(dungeon, navigationData);
       updateStepDisplay();
     });

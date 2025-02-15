@@ -88,6 +88,57 @@ export class DungeonRenderer {
     return null;
   }
 
+  private findBestConnectionPoint(
+    room: RoomNode,
+    target: RoomNode,
+    grid: GridCell[][],
+    cellSize: number
+  ): { x: number; y: number } | null {
+    const roomX = Math.floor(room.x / cellSize);
+    const roomY = Math.floor(room.y / cellSize);
+    const targetX = Math.floor(target.x / cellSize);
+    const targetY = Math.floor(target.y / cellSize);
+
+    // Get the general direction to the target
+    const dx = targetX - roomX;
+    const dy = targetY - roomY;
+
+    // Check points around the room in order of preference
+    const checkPoints: Array<[number, number]> = [];
+    
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Prefer horizontal connections
+      checkPoints.push(
+        [roomX + Math.sign(dx), roomY], // Side towards target
+        [roomX, roomY + Math.sign(dy)], // Perpendicular side
+        [roomX, roomY - Math.sign(dy)], // Other perpendicular side
+        [roomX - Math.sign(dx), roomY]  // Opposite side
+      );
+    } else {
+      // Prefer vertical connections
+      checkPoints.push(
+        [roomX, roomY + Math.sign(dy)], // Side towards target
+        [roomX + Math.sign(dx), roomY], // Perpendicular side
+        [roomX - Math.sign(dx), roomY], // Other perpendicular side
+        [roomX, roomY - Math.sign(dy)]  // Opposite side
+      );
+    }
+
+    // Find the first walkable point
+    for (const [x, y] of checkPoints) {
+      // Check if point is within grid bounds
+      if (x >= 0 && x < grid[0].length && y >= 0 && y < grid.length) {
+        // Check adjacent cells to find a walkable one
+        const walkable = this.findNearestWalkableCell(x, y, grid);
+        if (walkable) {
+          return walkable;
+        }
+      }
+    }
+
+    return null;
+  }
+
   private calculateEndpoint(
     source: RoomNode,
     target: RoomNode,
@@ -223,29 +274,24 @@ export class DungeonRenderer {
     offsetY: number
   ): string {
     const { grid, cellSize } = navigationData;
-    const pathfinder = new AStarGrid(grid);
 
-    // Get start and end points in grid coordinates
-    const sourceX = Math.floor(source.x / cellSize);
-    const sourceY = Math.floor(source.y / cellSize);
-    const targetX = Math.floor(target.x / cellSize);
-    const targetY = Math.floor(target.y / cellSize);
+    // Find best connection points for both rooms
+    const sourcePoint = this.findBestConnectionPoint(source, target, grid, cellSize);
+    const targetPoint = this.findBestConnectionPoint(target, source, grid, cellSize);
 
-    // Find nearest walkable cells to start and end points
-    const walkableStart = this.findNearestWalkableCell(sourceX, sourceY, grid);
-    const walkableEnd = this.findNearestWalkableCell(targetX, targetY, grid);
-
-    if (!walkableStart || !walkableEnd) {
+    if (!sourcePoint || !targetPoint) {
+      // Fallback to direct line if no path found
       return `M ${source.x + offsetX} ${source.y + offsetY} 
               L ${target.x + offsetX} ${target.y + offsetY}`;
     }
 
-    // Find path between walkable cells
+    // Find path between connection points
+    const pathfinder = new AStarGrid(grid);
     const path = pathfinder.findPath(
-      walkableStart.x,
-      walkableStart.y,
-      walkableEnd.x,
-      walkableEnd.y,
+      sourcePoint.x,
+      sourcePoint.y,
+      targetPoint.x,
+      targetPoint.y,
       true
     );
 

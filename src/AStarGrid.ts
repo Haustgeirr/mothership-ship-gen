@@ -14,23 +14,116 @@ interface AStarNode {
   direction?: string;
 }
 
+// Priority Queue implementation optimized for A* pathfinding
+class PriorityQueue<T extends { f: number; h: number }> {
+  private items: T[] = [];
+
+  public push(item: T): void {
+    this.items.push(item);
+    this.bubbleUp(this.items.length - 1);
+  }
+
+  public pop(): T | undefined {
+    if (this.items.length === 0) return undefined;
+    
+    const result = this.items[0];
+    const last = this.items.pop()!;
+    
+    if (this.items.length > 0) {
+      this.items[0] = last;
+      this.bubbleDown(0);
+    }
+    
+    return result;
+  }
+
+  public get length(): number {
+    return this.items.length;
+  }
+
+  private bubbleUp(index: number): void {
+    while (index > 0) {
+      const parentIndex = Math.floor((index - 1) / 2);
+      if (this.compare(this.items[index], this.items[parentIndex]) >= 0) break;
+      
+      [this.items[parentIndex], this.items[index]] = 
+      [this.items[index], this.items[parentIndex]];
+      
+      index = parentIndex;
+    }
+  }
+
+  private bubbleDown(index: number): void {
+    while (true) {
+      let smallest = index;
+      const leftChild = 2 * index + 1;
+      const rightChild = 2 * index + 2;
+
+      if (leftChild < this.items.length && 
+          this.compare(this.items[leftChild], this.items[smallest]) < 0) {
+        smallest = leftChild;
+      }
+
+      if (rightChild < this.items.length && 
+          this.compare(this.items[rightChild], this.items[smallest]) < 0) {
+        smallest = rightChild;
+      }
+
+      if (smallest === index) break;
+
+      [this.items[index], this.items[smallest]] = 
+      [this.items[smallest], this.items[index]];
+      
+      index = smallest;
+    }
+  }
+
+  private compare(a: T, b: T): number {
+    // Primary sort by f-cost
+    if (a.f !== b.f) return a.f - b.f;
+    // Secondary sort by h-cost to prefer nodes closer to goal
+    return a.h - b.h;
+  }
+
+  public find(predicate: (item: T) => boolean): T | undefined {
+    return this.items.find(predicate);
+  }
+
+  public update(item: T): void {
+    const index = this.items.findIndex(i => i === item);
+    if (index !== -1) {
+      this.bubbleUp(index);
+      this.bubbleDown(index);
+    }
+  }
+}
+
 export class AStarGrid {
   private rows: number;
   private cols: number;
   private grid: GridCell[][];
-  private debug: boolean = false;
+  private debug: boolean;
 
-  constructor(grid: GridCell[][]) {
+  constructor(grid: GridCell[][], debug: boolean = false) {
     this.grid = grid;
     this.rows = grid.length;
     this.cols = grid[0]?.length || 0;
+    this.debug = debug;
   }
 
   private heuristic(ax: number, ay: number, bx: number, by: number) {
-    // Use diagonal distance - more accurate than Manhattan
+    // Modified heuristic that heavily favors cardinal movements
     const dx = Math.abs(ax - bx);
     const dy = Math.abs(ay - by);
-    return dx + dy + (Math.SQRT2 - 2) * Math.min(dx, dy);
+    
+    // Base cost is Manhattan distance
+    const baseCost = dx + dy;
+    
+    // Add a small penalty for situations that might require diagonal movement
+    // This helps maintain cardinal preference while still allowing diagonal when necessary
+    const diagonalPotentialPenalty = Math.min(dx, dy) * 0.001;
+    
+    return baseCost + diagonalPotentialPenalty;
   }
 
   private getDirection(
@@ -77,91 +170,79 @@ export class AStarGrid {
     goalX: number,
     goalY: number
   ): number {
-    const baseCost = 1;
-    const turnPenalty = 5000;
-    const alignmentBonus = -2000;
-    const diagonalPenalty = 3000;
-    const straightLineBonus = -1500;
-
-    if (!current.parent) {
-      return baseCost;
-    }
-
-    const newDirection = this.getDirection(current.x, current.y, nextX, nextY);
-    const currentDirection = this.getDirection(
-      current.parent.x,
-      current.parent.y,
-      current.x,
-      current.y
-    );
+    // Base movement cost
+    const baseCost = 1000;
+    
+    // Calculate primary direction to goal
+    const dx = goalX - current.x;
+    const dy = goalY - current.y;
+    const isHorizontalPrimary = Math.abs(dx) > Math.abs(dy);
+    
+    // Calculate movement direction
+    const moveX = nextX - current.x;
+    const moveY = nextY - current.y;
 
     let cost = baseCost;
-    let debugInfo: Record<string, number> = {};
 
-    // Heavily penalize turns
-    if (newDirection !== currentDirection) {
+    // If this is the first move from the start node
+    if (!current.parent) {
+      // Strongly encourage initial movement in primary direction
+      if (isHorizontalPrimary && moveY !== 0) {
+        cost *= 10; // Heavy penalty for not moving in primary direction
+      } else if (!isHorizontalPrimary && moveX !== 0) {
+        cost *= 10;
+      }
+      return cost;
+    }
+
+    // Get previous movement
+    const prevMoveX = current.x - current.parent.x;
+    const prevMoveY = current.y - current.parent.y;
+
+    // Penalties
+    const turnPenalty = baseCost * 8;        // Penalty for changing direction
+    const wrongDirPenalty = baseCost * 12;   // Penalty for moving away from goal
+    const directionChangePenalty = baseCost * 5; // Penalty for changing cardinal direction
+
+    // Penalize direction changes
+    if (moveX !== prevMoveX || moveY !== prevMoveY) {
       cost += turnPenalty;
-      debugInfo.turnPenalty = turnPenalty;
-    } else {
-      // Reward continuing in the same direction
-      cost += straightLineBonus;
-      debugInfo.straightLineBonus = straightLineBonus;
-    }
-
-    // Improved diagonal penalty calculation
-    const dx = Math.abs(goalX - current.x);
-    const dy = Math.abs(goalY - current.y);
-
-    // If we're closer to being aligned with one axis, strongly prefer moving along that axis
-    if (Math.abs(dx - dy) < 2) {
-      // If roughly diagonal distance to goal
-      if ((newDirection === 'right' || newDirection === 'left') && dy > 1) {
-        cost += diagonalPenalty;
-        debugInfo.diagonalPenalty = diagonalPenalty;
-      }
-      if ((newDirection === 'up' || newDirection === 'down') && dx > 1) {
-        cost += diagonalPenalty;
-        debugInfo.diagonalPenalty = diagonalPenalty;
-      }
-    } else {
-      // If clearly closer to one axis, very strongly prefer that axis
-      if (dx > dy) {
-        if (newDirection !== 'left' && newDirection !== 'right') {
-          cost += diagonalPenalty * 2;
-          debugInfo.diagonalPenalty = diagonalPenalty * 2;
-        }
-      } else {
-        if (newDirection !== 'up' && newDirection !== 'down') {
-          cost += diagonalPenalty * 2;
-          debugInfo.diagonalPenalty = diagonalPenalty * 2;
-        }
+      
+      // Extra penalty for changing cardinal direction
+      if ((prevMoveX !== 0 && moveY !== 0) || (prevMoveY !== 0 && moveX !== 0)) {
+        cost += directionChangePenalty;
       }
     }
 
-    // Enhanced alignment bonus calculation
-    if (
-      this.isDirectionTowardsGoal(
-        newDirection,
-        current.x,
-        current.y,
-        goalX,
-        goalY
-      )
-    ) {
-      const alignmentStrength = Math.abs(dx - dy) / Math.max(dx, dy); // How well aligned we are
-      const alignmentCost = alignmentBonus * alignmentStrength;
-      cost += alignmentCost;
-      debugInfo.alignmentBonus = alignmentCost;
+    // Penalize moving away from goal
+    if ((dx > 0 && moveX < 0) || (dx < 0 && moveX > 0)) {
+      cost += wrongDirPenalty;
+    }
+    if ((dy > 0 && moveY < 0) || (dy < 0 && moveY > 0)) {
+      cost += wrongDirPenalty;
+    }
+
+    // Penalize non-primary direction movement more when far from goal
+    const distanceToGoal = Math.abs(dx) + Math.abs(dy);
+    if (distanceToGoal > 2) {
+      if (isHorizontalPrimary && moveY !== 0) {
+        cost += baseCost * 3;
+      } else if (!isHorizontalPrimary && moveX !== 0) {
+        cost += baseCost * 3;
+      }
     }
 
     if (this.debug) {
       console.log(
-        `Move ${current.x},${current.y} -> ${nextX},${nextY} (${newDirection}):`,
+        `Move ${current.x},${current.y} -> ${nextX},${nextY}:`,
         {
-          currentDirection,
-          newDirection,
           cost,
-          penalties: debugInfo,
+          isHorizontalPrimary,
+          dx,
+          dy,
+          moveX,
+          moveY,
+          distanceToGoal
         }
       );
     }
@@ -176,15 +257,7 @@ export class AStarGrid {
     endY: number,
     debug: boolean = false
   ): Point[] {
-    this.debug = debug;
-
-    if (debug) {
-      console.log(
-        `Finding path from (${startX},${startY}) to (${endX},${endY})`
-      );
-    }
-
-    const open: AStarNode[] = [];
+    const open = new PriorityQueue<AStarNode>();
     const closed = new Set<string>();
 
     const startNode: AStarNode = {
@@ -201,15 +274,7 @@ export class AStarGrid {
     const key = (x: number, y: number) => `${x},${y}`;
 
     while (open.length > 0) {
-      // Sort by f-cost, then h-cost for ties
-      open.sort((a, b) => {
-        if (a.f === b.f) {
-          return a.h - b.h; // Prefer nodes closer to goal
-        }
-        return a.f - b.f;
-      });
-
-      const current = open.shift()!;
+      const current = open.pop()!;
       const currentKey = key(current.x, current.y);
 
       // Goal check first
@@ -221,7 +286,6 @@ export class AStarGrid {
           node = node.parent;
         }
         if (debug && path.length > 0) {
-          console.log(`Path found with ${path.length} steps`);
           let turns = 0;
           let lastDirection = '';
 
@@ -237,8 +301,6 @@ export class AStarGrid {
             }
             lastDirection = direction;
           }
-
-          console.log(`Path has ${turns} turns`);
         }
         return path.reverse();
       }
@@ -286,6 +348,7 @@ export class AStarGrid {
             existing.f = fCost;
             existing.parent = current;
             existing.direction = direction;
+            open.update(existing);
           } else {
             open.push({
               x: nx,
