@@ -6,6 +6,12 @@ import { Dice } from './dice';
 import { DUNGEON_CONSTANTS } from './constants';
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
+const seedDisplay = document.querySelector<HTMLSpanElement>('#seed-display');
+const stepDisplay = document.querySelector<HTMLSpanElement>('#step-display');
+const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
+const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
+const autoPlayButton = document.querySelector<HTMLButtonElement>('#auto-play');
+const resetButton = document.querySelector<HTMLButtonElement>('#reset');
 
 if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
@@ -21,8 +27,6 @@ const seed = 1738880047796; //  straight path solve 2
 // const seed = Date.now();
 new PRNG(seed);
 
-// Update seed display
-const seedDisplay = document.querySelector<HTMLSpanElement>('#seed-display');
 if (seedDisplay) {
   seedDisplay.textContent = seed.toString();
 }
@@ -46,8 +50,9 @@ const config: GenerationConfig = {
 
 console.log('Generating dungeon with config:', config);
 
-// Generate and render the dungeon
+// Generate the dungeon
 const dungeon = generator.generate(config);
+let autoPlayInterval: number | null = null;
 
 if (generator.validateDungeon(dungeon)) {
   console.log('Generated valid dungeon with:', {
@@ -55,9 +60,83 @@ if (generator.validateDungeon(dungeon)) {
     links: dungeon.links.length,
   });
   const navigationData = generator.createNavigationGrid();
-  renderer.render(dungeon, navigationData);
+  
+  // Initialize the render but don't draw links yet
+  renderer.initializeRender(dungeon, navigationData);
+
+  // Update step display
+  const updateStepDisplay = () => {
+    if (stepDisplay) {
+      stepDisplay.textContent = `Step ${renderer.getCurrentStep() + 1} of ${renderer.getTotalSteps()}`;
+    }
+  };
+  updateStepDisplay();
+
+  // Add button event listeners
+  if (nextButton) {
+    nextButton.addEventListener('click', () => {
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        if (autoPlayButton) {
+          autoPlayButton.textContent = 'Auto Play';
+        }
+      }
+      renderer.nextStep();
+      updateStepDisplay();
+    });
+  }
+
+  if (prevButton) {
+    prevButton.addEventListener('click', () => {
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        if (autoPlayButton) {
+          autoPlayButton.textContent = 'Auto Play';
+        }
+      }
+      renderer.previousStep();
+      updateStepDisplay();
+    });
+  }
+
+  if (autoPlayButton) {
+    autoPlayButton.addEventListener('click', () => {
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        autoPlayButton.textContent = 'Auto Play';
+      } else {
+        autoPlayButton.textContent = 'Stop';
+        autoPlayInterval = window.setInterval(() => {
+          const hasMore = renderer.nextStep();
+          updateStepDisplay();
+          if (!hasMore) {
+            clearInterval(autoPlayInterval!);
+            autoPlayInterval = null;
+            autoPlayButton.textContent = 'Auto Play';
+          }
+        }, 500); // Adjust speed as needed
+      }
+    });
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener('click', () => {
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        if (autoPlayButton) {
+          autoPlayButton.textContent = 'Auto Play';
+        }
+      }
+      renderer.initializeRender(dungeon, navigationData);
+      updateStepDisplay();
+    });
+  }
 } else {
   console.error('Generated dungeon is not fully connected');
   const navigationData = generator.createNavigationGrid();
-  renderer.renderDebug(dungeon, navigationData); // Pass navigation data to debug render
+  renderer.renderDebug(dungeon, navigationData);
 }

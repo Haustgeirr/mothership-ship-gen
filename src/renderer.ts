@@ -19,6 +19,9 @@ export class DungeonRenderer {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private graph: DungeonGraph | null = null;
   private navigationData: NavigationGridData | null = null;
+  private currentStep: number = -1;
+  private linkGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+  private gridGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
 
   constructor(svgElement: SVGSVGElement) {
     this.svg = d3.select(svgElement);
@@ -622,28 +625,279 @@ export class DungeonRenderer {
     return gridGroup;
   }
 
-  render(graph: DungeonGraph, navigationData: NavigationGridData): void {
+  private renderStep() {
+    if (!this.graph || !this.navigationData || !this.linkGroup) return;
+
+    const { x: offsetX, y: offsetY } = this.calculateOffsets(this.graph);
+    const allLinks = [...this.graph.links];
+    const currentLink = allLinks[this.currentStep];
+
+    if (!currentLink) return;
+
+    // Function to create path (reuse existing createPath logic)
+    const createPath = (d: RoomLink) => {
+      if (d.type === 'secondary') {
+        return this.calculateSecondaryPath(
+          d.source,
+          d.target,
+          this.navigationData!,
+          offsetX,
+          offsetY
+        );
+      }
+
+      const start = this.calculateEndpoint(
+        d.source,
+        d.target,
+        this.getNodeBounds(d.source),
+        d
+      );
+      const end = this.calculateEndpoint(
+        d.target,
+        d.source,
+        this.getNodeBounds(d.target),
+        d
+      );
+
+      const { grid, cellSize } = this.navigationData!;
+      const pathfinder = new AStarGrid(grid);
+      const sourceX = Math.floor(d.source.x / cellSize);
+      const sourceY = Math.floor(d.source.y / cellSize);
+      const targetX = Math.floor(d.target.x / cellSize);
+      const targetY = Math.floor(d.target.y / cellSize);
+
+      const path = pathfinder.findPath(
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        false
+      );
+
+      if (path.length === 0) {
+        return `M ${start.x + offsetX} ${start.y + offsetY} 
+                L ${end.x + offsetX} ${end.y + offsetY}`;
+      }
+
+      const pathCommands = [`M ${start.x + offsetX} ${start.y + offsetY}`];
+      path.slice(1, -1).forEach(([x, y]) => {
+        const px = x * cellSize + cellSize / 2 + offsetX;
+        const py = y * cellSize + cellSize / 2 + offsetY;
+        pathCommands.push(`L ${px} ${py}`);
+      });
+      pathCommands.push(`L ${end.x + offsetX} ${end.y + offsetY}`);
+
+      return pathCommands.join(' ');
+    };
+
+    // Render the current link
+    const path = this.linkGroup
+      .append('path')
+      .attr('class', currentLink.type)
+      .attr('stroke', currentLink.type === 'door' ? 'black' : 'red')
+      .attr('stroke-width', currentLink.type === 'door' ? 2 : 1)
+      .attr('fill', 'none')
+      .attr('stroke-dasharray', currentLink.type === 'secondary' ? '4,4' : 'none')
+      .attr('d', createPath(currentLink));
+
+    // Add connectors based on link type
+    if (currentLink.type === 'door') {
+      this.renderDoorConnectorsForLink(currentLink, offsetX, offsetY);
+    } else {
+      this.renderSecondaryConnectorsForLink(currentLink, offsetX, offsetY);
+    }
+  }
+
+  private renderDoorConnectorsForLink(
+    link: RoomLink,
+    offsetX: number,
+    offsetY: number
+  ) {
+    if (!this.linkGroup) return;
+
+    // Source connector
+    const start = this.calculateEndpoint(
+      link.target,
+      link.source,
+      this.getNodeBounds(link.target),
+      link
+    );
+    this.linkGroup
+      .append('circle')
+      .attr('class', 'connector')
+      .attr('r', this.getConnectorBounds(link).width / 2)
+      .attr('fill', 'black')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 1)
+      .attr('cx', start.x + offsetX)
+      .attr('cy', start.y + offsetY);
+
+    // Target connector
+    const end = this.calculateEndpoint(
+      link.source,
+      link.target,
+      this.getNodeBounds(link.source),
+      link
+    );
+    this.linkGroup
+      .append('circle')
+      .attr('class', 'connector-target')
+      .attr('r', this.getConnectorBounds(link).width / 2)
+      .attr('fill', 'black')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 1)
+      .attr('cx', end.x + offsetX)
+      .attr('cy', end.y + offsetY);
+  }
+
+  private renderSecondaryConnectorsForLink(
+    link: RoomLink,
+    offsetX: number,
+    offsetY: number
+  ) {
+    if (!this.linkGroup) return;
+
+    const getPathEndpoint = (isSource: boolean) => {
+      const path = this.calculateSecondaryPath(
+        link.source,
+        link.target,
+        this.getNavigationData(),
+        0,
+        0
+      );
+      const commands = path
+        .split(/([MLZ])/)
+        .filter((cmd) => cmd.trim().length > 0);
+
+      if (isSource) {
+        const moveCmd = commands[1]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const lineCmd = commands[3]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        return {
+          x: moveCmd[0],
+          y: moveCmd[1],
+          angle: Math.atan2(lineCmd[1] - moveCmd[1], lineCmd[0] - moveCmd[0]),
+        };
+      } else {
+        const lastCmd = commands[commands.length - 1]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        const prevCmd = commands[commands.length - 3]
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number);
+        return {
+          x: lastCmd[0],
+          y: lastCmd[1],
+          angle: Math.atan2(
+            lastCmd[1] - prevCmd[1],
+            lastCmd[0] - prevCmd[0]
+          ),
+        };
+      }
+    };
+
+    // Source connector
+    const sourceEndpoint = getPathEndpoint(true);
+    const bounds = this.getConnectorBounds(link);
+    this.linkGroup
+      .append('rect')
+      .attr('class', 'connector')
+      .attr('width', bounds.width)
+      .attr('height', bounds.height)
+      .attr('fill', 'red')
+      .attr('stroke', 'red')
+      .attr('stroke-width', 1)
+      .attr('transform', `translate(${
+        sourceEndpoint.x + offsetX - bounds.width / 2
+      }, ${sourceEndpoint.y + offsetY - bounds.height / 2}) rotate(${
+        (sourceEndpoint.angle * 180) / Math.PI
+      }, ${bounds.width / 2}, ${bounds.height / 2})`);
+
+    // Target connector
+    const targetEndpoint = getPathEndpoint(false);
+    this.linkGroup
+      .append('rect')
+      .attr('class', 'connector-target')
+      .attr('width', bounds.width)
+      .attr('height', bounds.height)
+      .attr('fill', 'red')
+      .attr('stroke', 'red')
+      .attr('stroke-width', 1)
+      .attr('transform', `translate(${
+        targetEndpoint.x + offsetX - bounds.width / 2
+      }, ${targetEndpoint.y + offsetY - bounds.height / 2}) rotate(${
+        (targetEndpoint.angle * 180) / Math.PI
+      }, ${bounds.width / 2}, ${bounds.height / 2})`);
+  }
+
+  public initializeRender(graph: DungeonGraph, navigationData: NavigationGridData): void {
     this.navigationData = navigationData;
     this.svg.selectAll('*').remove();
     this.graph = graph;
+    this.currentStep = -1;
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
 
-    // Render navigation grid first so it appears behind everything
-    const gridGroup = this.renderNavigationGrid(
-      navigationData,
-      offsetX,
-      offsetY
-    );
+    // Render navigation grid
+    this.gridGroup = this.renderNavigationGrid(navigationData, offsetX, offsetY);
+    this.gridGroup.lower();
 
-    // Render rooms and links on top of the grid
+    // Render rooms
     this.renderRooms(graph, offsetX, offsetY);
-    const linkGroup = this.renderLinks(graph, offsetX, offsetY, navigationData);
-    this.renderDoorConnectors(linkGroup, graph, offsetX, offsetY);
-    this.renderSecondaryConnectors(linkGroup, graph, offsetX, offsetY);
 
-    // Ensure grid stays behind everything
-    gridGroup.lower();
+    // Create empty link group for step-by-step rendering
+    this.linkGroup = this.svg.append('g');
+  }
+
+  public nextStep(): boolean {
+    if (!this.graph || this.currentStep >= this.graph.links.length - 1) {
+      return false;
+    }
+
+    this.currentStep++;
+    this.renderStep();
+    return true;
+  }
+
+  public previousStep(): boolean {
+    if (!this.linkGroup || this.currentStep < 0) {
+      return false;
+    }
+
+    // Remove the last rendered link and its connectors
+    const children = this.linkGroup.node()?.children;
+    if (children) {
+      // Remove the last 3 elements (path + 2 connectors)
+      for (let i = 0; i < 3; i++) {
+        children[children.length - 1]?.remove();
+      }
+    }
+
+    this.currentStep--;
+    return true;
+  }
+
+  public getCurrentStep(): number {
+    return this.currentStep;
+  }
+
+  public getTotalSteps(): number {
+    return this.graph?.links.length ?? 0;
+  }
+
+  render(graph: DungeonGraph, navigationData: NavigationGridData): void {
+    // Initialize the render
+    this.initializeRender(graph, navigationData);
+    
+    // Render all steps at once
+    while (this.nextStep()) {}
   }
 
   renderDebug(graph: DungeonGraph, navigationData: NavigationGridData): void {
