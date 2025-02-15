@@ -1,10 +1,10 @@
 import type { SimulationNodeDatum } from 'd3';
 
-export interface RoomNode extends SimulationNodeDatum {
+export interface RoomNode {
   id: number;
-  name: string;
   x: number;
   y: number;
+  name: string;
   size?: number;
 }
 
@@ -28,4 +28,9 @@ export interface GenerationConfig {
   minSecondaryLinks?: number;
   maxSecondaryLinks?: number;
   cellSize?: number;
+}
+
+export interface NavigationGridData {
+  grid: import('./AStarGrid').GridCell[][];
+  cellSize: number;
 }

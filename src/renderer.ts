@@ -20,6 +20,10 @@ export class DungeonRenderer {
   private graph: DungeonGraph | null = null;
   private navigationData: NavigationGridData | null = null;
 
+  constructor(svgElement: SVGSVGElement) {
+    this.svg = d3.select(svgElement);
+  }
+
   private getNodeBounds(node: RoomNode): NodeBounds {
     return {
       width: node.size || DUNGEON_CONSTANTS.NODE_SIZE,
@@ -34,6 +38,51 @@ export class DungeonRenderer {
       height: DUNGEON_CONSTANTS.CONNECTOR_SIZE,
       shape: link.type === 'door' ? 'circle' : 'rectangle',
     };
+  }
+
+  private getNavigationData(): NavigationGridData {
+    if (!this.navigationData) {
+      throw new Error('Navigation data not initialized');
+    }
+    return this.navigationData;
+  }
+
+  private findNearestWalkableCell(
+    x: number,
+    y: number,
+    grid: GridCell[][]
+  ): { x: number; y: number } | null {
+    // Check adjacent cells in a spiral pattern
+    const checked = new Set<string>();
+    const toCheck: Array<[number, number, number]> = [[x, y, 0]]; // x, y, distance
+
+    while (toCheck.length > 0) {
+      const [cx, cy, dist] = toCheck.shift()!;
+      const key = `${cx},${cy}`;
+
+      if (checked.has(key)) continue;
+      checked.add(key);
+
+      // Check if this cell is valid and walkable
+      if (cx >= 0 && cy >= 0 && cx < grid[0].length && cy < grid.length) {
+        if (grid[cy][cx].walkable) {
+          return { x: cx, y: cy };
+        }
+
+        // Add adjacent cells with increased distance
+        toCheck.push(
+          [cx + 1, cy, dist + 1],
+          [cx - 1, cy, dist + 1],
+          [cx, cy + 1, dist + 1],
+          [cx, cy - 1, dist + 1]
+        );
+
+        // Sort by distance to prioritize closer cells
+        toCheck.sort((a, b) => a[2] - b[2]);
+      }
+    }
+
+    return null;
   }
 
   private calculateEndpoint(
@@ -132,7 +181,6 @@ export class DungeonRenderer {
     };
   }
 
-  // Helper method for basic endpoint calculation
   private calculateBasicEndpoint(
     source: RoomNode,
     target: RoomNode,
@@ -146,18 +194,6 @@ export class DungeonRenderer {
       x: source.x + Math.cos(angle) * intersectDistance,
       y: source.y + Math.sin(angle) * intersectDistance,
     };
-  }
-
-  // Helper to get navigation data (add this near the top of the class)
-  private getNavigationData(): NavigationGridData {
-    if (!this.navigationData) {
-      throw new Error('Navigation data not set');
-    }
-    return this.navigationData;
-  }
-
-  constructor(svgElement: SVGSVGElement) {
-    this.svg = d3.select(svgElement);
   }
 
   private calculateOffsets(graph: DungeonGraph) {
@@ -174,44 +210,6 @@ export class DungeonRenderer {
       x: (svgWidth - dungeonWidth) / 2 - xExtent[0],
       y: (svgHeight - dungeonHeight) / 2 - yExtent[0],
     };
-  }
-
-  private findNearestWalkableCell(
-    x: number,
-    y: number,
-    grid: GridCell[][]
-  ): { x: number; y: number } | null {
-    // Check adjacent cells in a spiral pattern
-    const checked = new Set<string>();
-    const toCheck: Array<[number, number, number]> = [[x, y, 0]]; // x, y, distance
-
-    while (toCheck.length > 0) {
-      const [cx, cy, dist] = toCheck.shift()!;
-      const key = `${cx},${cy}`;
-
-      if (checked.has(key)) continue;
-      checked.add(key);
-
-      // Check if this cell is valid and walkable
-      if (cx >= 0 && cy >= 0 && cx < grid[0].length && cy < grid.length) {
-        if (grid[cy][cx].walkable) {
-          return { x: cx, y: cy };
-        }
-
-        // Add adjacent cells with increased distance
-        toCheck.push(
-          [cx + 1, cy, dist + 1],
-          [cx - 1, cy, dist + 1],
-          [cx, cy + 1, dist + 1],
-          [cx, cy - 1, dist + 1]
-        );
-
-        // Sort by distance to prioritize closer cells
-        toCheck.sort((a, b) => a[2] - b[2]);
-      }
-    }
-
-    return null;
   }
 
   private calculateSecondaryPath(
@@ -469,8 +467,6 @@ export class DungeonRenderer {
     offsetX: number,
     offsetY: number
   ) {
-    const { cellSize } = this.getNavigationData();
-
     // Helper to get the first/last path segment direction and position
     const getPathEndpoint = (d: RoomLink, isSource: boolean) => {
       const path = this.calculateSecondaryPath(
@@ -572,37 +568,25 @@ export class DungeonRenderer {
       });
   }
 
-  private renderRooms(graph: DungeonGraph, offsetX: number, offsetY: number) {
-    // Create a group for each room that will contain both circle and text
-    const roomGroups = this.svg
+  private renderRooms(
+    graph: DungeonGraph,
+    offsetX: number,
+    offsetY: number
+  ) {
+    // Draw nodes with IDs for debugging
+    const nodes = this.svg
       .append('g')
-      .selectAll<SVGGElement, RoomNode>('g')
+      .selectAll<SVGCircleElement, RoomNode>('circle')
       .data(graph.rooms)
       .enter()
-      .append('g');
-
-    // Add circles
-    roomGroups
       .append('circle')
       .attr('r', (d) => this.getNodeBounds(d).width / 2)
-      .attr('fill', 'white')
-      .attr('stroke', 'black')
+      .attr('fill', 'black')
       .attr('cx', (d) => d.x + offsetX)
-      .attr('cy', (d) => d.y + offsetY)
-      .append('title')
-      .text((d: RoomNode) => `${d.name} (${d.id})`);
+      .attr('cy', (d) => d.y + offsetY);
 
-    // Add text labels inside circles
-    roomGroups
-      .append('text')
-      .attr('x', (d) => d.x + offsetX)
-      .attr('y', (d) => d.y + offsetY)
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'central')
-      .attr('font-size', '10px')
-      .text((d) => d.id.toString());
-
-    return roomGroups;
+    // Add tooltips
+    nodes.append('title').text((d: RoomNode) => `${d.name} (${d.id})`);
   }
 
   private renderNavigationGrid(
@@ -662,7 +646,6 @@ export class DungeonRenderer {
     gridGroup.lower();
   }
 
-  // Update the debug render to show both room IDs and navigation grid
   renderDebug(graph: DungeonGraph, navigationData: NavigationGridData): void {
     this.render(graph, navigationData);
   }

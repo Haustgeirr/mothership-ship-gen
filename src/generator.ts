@@ -26,53 +26,21 @@ export class DungeonGenerator {
     this.cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
   }
 
-  private isPositionOccupied(
-    graph: DungeonGraph,
-    x: number,
-    y: number
-  ): boolean {
-    return graph.rooms.some(
-      (room) =>
-        Math.abs(room.x - x * this.cellSize) < 0.1 &&
-        Math.abs(room.y - y * this.cellSize) < 0.1
-    );
-  }
-
-  private isValidBranchPosition(
-    graph: DungeonGraph,
-    x: number,
-    y: number,
-    sourceRoom: RoomNode
-  ): boolean {
-    const sourceGridX = sourceRoom.x / this.cellSize;
-    const sourceGridY = sourceRoom.y / this.cellSize;
-
-    // Check if directly adjacent in cardinal direction
-    const isCardinalAdjacent =
-      (x === sourceGridX && Math.abs(y - sourceGridY) === 1) ||
-      (y === sourceGridY && Math.abs(x - sourceGridX) === 1);
-
-    if (!isCardinalAdjacent) return false;
-
-    // Check for invalid connections with other rooms
-    return !graph.rooms.some((room) => {
-      if (room.id === sourceRoom.id) return false;
-      const roomGridX = room.x / this.cellSize;
-      const roomGridY = room.y / this.cellSize;
-      return (
-        (Math.abs(x - roomGridX) === 1 && y === roomGridY) ||
-        (Math.abs(y - roomGridY) === 1 && x === roomGridX)
-      );
-    });
-  }
-
   private createRoom(id: number, x: number, y: number): RoomNode {
     return {
       id: id,
-      name: `Room ${id}`,
       x: x * this.cellSize,
       y: y * this.cellSize,
+      name: `Room ${id}`,
     };
+  }
+
+  private isPositionOccupied(graph: DungeonGraph, x: number, y: number): boolean {
+    return graph.rooms.some(
+      (room) =>
+        Math.floor(room.x / this.cellSize) === x &&
+        Math.floor(room.y / this.cellSize) === y
+    );
   }
 
   private createLink(
@@ -169,8 +137,7 @@ export class DungeonGenerator {
             pos.x < dungeonWidth / this.cellSize &&
             pos.y >= 0 &&
             pos.y < dungeonHeight / this.cellSize &&
-            !this.isPositionOccupied(this.graph, pos.x, pos.y) &&
-            this.isValidBranchPosition(this.graph, pos.x, pos.y, sourceRoom)
+            !this.isPositionOccupied(this.graph, pos.x, pos.y)
         );
 
       if (validPositions.length === 0) continue;
@@ -204,27 +171,29 @@ export class DungeonGenerator {
     return this.graph;
   }
 
-  validateDungeon(graph: DungeonGraph): boolean {
+  validateDungeon(dungeon: DungeonGraph): boolean {
+    // Simple validation to ensure all rooms are connected
     const visited = new Set<number>();
+    const stack = [dungeon.rooms[0]];
 
-    const dfs = (roomId: number): void => {
-      if (visited.has(roomId)) return;
-      visited.add(roomId);
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      visited.add(current.id);
 
-      const neighbors = graph.links
-        .filter(
-          (link) => link.source.id === roomId || link.target.id === roomId
-        )
-        .map((link) =>
-          link.source.id === roomId ? link.target.id : link.source.id
-        );
+      // Find all connected rooms through links
+      dungeon.links.forEach((link) => {
+        if (link.source.id === current.id && !visited.has(link.target.id)) {
+          stack.push(link.target);
+        } else if (
+          link.target.id === current.id &&
+          !visited.has(link.source.id)
+        ) {
+          stack.push(link.source);
+        }
+      });
+    }
 
-      neighbors.forEach((neighbor) => dfs(neighbor));
-    };
-
-    dfs(graph.rooms[0]?.id || 0);
-
-    return visited.size === graph.rooms.length;
+    return visited.size === dungeon.rooms.length;
   }
 
   /**
