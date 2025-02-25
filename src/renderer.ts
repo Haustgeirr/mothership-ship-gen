@@ -2,7 +2,6 @@ import * as d3 from 'd3';
 import type { DungeonGraph, RoomNode, RoomLink } from './types';
 import { AStarGrid, type GridCell } from './AStarGrid';
 import { DUNGEON_CONSTANTS } from './constants';
-import { DungeonGenerator } from './generator';
 
 interface NodeBounds {
   width: number;
@@ -105,7 +104,7 @@ export class DungeonRenderer {
 
     // Check points around the room in order of preference
     const checkPoints: Array<[number, number]> = [];
-    
+
     if (Math.abs(dx) > Math.abs(dy)) {
       // Prefer horizontal connections
       checkPoints.push(
@@ -587,11 +586,9 @@ export class DungeonRenderer {
       .attr('transform', (d) => {
         const endpoint = getPathEndpoint(d, true);
         const bounds = this.getConnectorBounds(d);
-        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${
-          endpoint.y + offsetY - bounds.height / 2
-        }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${
-          bounds.height / 2
-        })`;
+        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${endpoint.y + offsetY - bounds.height / 2
+          }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${bounds.height / 2
+          })`;
       });
 
     // Target side connectors
@@ -609,11 +606,9 @@ export class DungeonRenderer {
       .attr('transform', (d) => {
         const endpoint = getPathEndpoint(d, false);
         const bounds = this.getConnectorBounds(d);
-        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${
-          endpoint.y + offsetY - bounds.height / 2
-        }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${
-          bounds.height / 2
-        })`;
+        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${endpoint.y + offsetY - bounds.height / 2
+          }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${bounds.height / 2
+          })`;
       });
   }
 
@@ -630,9 +625,26 @@ export class DungeonRenderer {
       .enter()
       .append('circle')
       .attr('r', (d) => this.getNodeBounds(d).width / 2)
-      .attr('fill', 'black')
+      .attr('fill', 'white')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 2)
       .attr('cx', (d) => d.x + offsetX)
       .attr('cy', (d) => d.y + offsetY);
+
+    // Add room numbers
+    this.svg
+      .append('g')
+      .selectAll<SVGTextElement, RoomNode>('text')
+      .data(graph.rooms)
+      .enter()
+      .append('text')
+      .attr('x', (d) => d.x + offsetX)
+      .attr('y', (d) => d.y + offsetY)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', '12px')
+      .attr('font-weight', 'bold')
+      .text((d) => d.id);
 
     // Add tooltips
     nodes.append('title').text((d: RoomNode) => `${d.name} (${d.id})`);
@@ -860,11 +872,9 @@ export class DungeonRenderer {
       .attr('fill', 'red')
       .attr('stroke', 'red')
       .attr('stroke-width', 1)
-      .attr('transform', `translate(${
-        sourceEndpoint.x + offsetX - bounds.width / 2
-      }, ${sourceEndpoint.y + offsetY - bounds.height / 2}) rotate(${
-        (sourceEndpoint.angle * 180) / Math.PI
-      }, ${bounds.width / 2}, ${bounds.height / 2})`);
+      .attr('transform', `translate(${sourceEndpoint.x + offsetX - bounds.width / 2
+        }, ${sourceEndpoint.y + offsetY - bounds.height / 2}) rotate(${(sourceEndpoint.angle * 180) / Math.PI
+        }, ${bounds.width / 2}, ${bounds.height / 2})`);
 
     // Target connector
     const targetEndpoint = getPathEndpoint(false);
@@ -876,11 +886,9 @@ export class DungeonRenderer {
       .attr('fill', 'red')
       .attr('stroke', 'red')
       .attr('stroke-width', 1)
-      .attr('transform', `translate(${
-        targetEndpoint.x + offsetX - bounds.width / 2
-      }, ${targetEndpoint.y + offsetY - bounds.height / 2}) rotate(${
-        (targetEndpoint.angle * 180) / Math.PI
-      }, ${bounds.width / 2}, ${bounds.height / 2})`);
+      .attr('transform', `translate(${targetEndpoint.x + offsetX - bounds.width / 2
+        }, ${targetEndpoint.y + offsetY - bounds.height / 2}) rotate(${(targetEndpoint.angle * 180) / Math.PI
+        }, ${bounds.width / 2}, ${bounds.height / 2})`);
   }
 
   public initializeRender(graph: DungeonGraph, navigationData: NavigationGridData): void {
@@ -941,9 +949,9 @@ export class DungeonRenderer {
   render(graph: DungeonGraph, navigationData: NavigationGridData): void {
     // Initialize the render
     this.initializeRender(graph, navigationData);
-    
+
     // Render all steps at once
-    while (this.nextStep()) {}
+    while (this.nextStep()) { }
   }
 
   renderDebug(graph: DungeonGraph, navigationData: NavigationGridData): void {

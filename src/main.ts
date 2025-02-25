@@ -23,8 +23,8 @@ if (!svgElement) {
 // const seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
 // const seed = 1738879581226; //  straight path solve
 // const seed = 1738879852013; //  straight path solve 2
-const seed = 1738880047796; //  straight path solve 2
-// const seed = Date.now();
+// const seed = 1738880047796; //  straight path solve 2
+const seed = Date.now();
 new PRNG(seed);
 
 if (seedDisplay) {
@@ -59,9 +59,12 @@ if (generator.validateDungeon(dungeon)) {
     links: dungeon.links.length,
   });
   const navigationData = generator.createNavigationGrid();
-  
+
   // Initialize the render but don't draw links yet
   renderer.initializeRender(dungeon, navigationData);
+
+  // Immediately advance to the last step
+  while (renderer.nextStep()) { }
 
   // Update step display
   const updateStepDisplay = () => {
@@ -89,7 +92,7 @@ if (generator.validateDungeon(dungeon)) {
   if (lastStepButton) {
     lastStepButton.addEventListener('click', () => {
       // Keep stepping until we reach the end
-      while (renderer.nextStep()) {}
+      while (renderer.nextStep()) { }
       updateStepDisplay();
     });
   }
