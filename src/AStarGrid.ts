@@ -14,26 +14,70 @@ interface AStarNode {
   direction?: string;
 }
 
+// Direction constants
+export enum Direction {
+  NONE = 'none',
+  UP = 'up',
+  DOWN = 'down',
+  LEFT = 'left',
+  RIGHT = 'right'
+}
+
+// Cost configuration interface for flexible path preferences
+export interface PathCostConfig {
+  baseCost: number;
+  turnPenaltyMultiplier: number;
+  wrongDirectionMultiplier: number;
+  cardinalChangeMultiplier: number;
+  nonPrimaryDirectionMultiplier: number;
+  initialNonPrimaryMultiplier: number;
+}
+
+// Default cost configuration
+const DEFAULT_COST_CONFIG: PathCostConfig = {
+  baseCost: 1000,
+  turnPenaltyMultiplier: 8,
+  wrongDirectionMultiplier: 12,
+  cardinalChangeMultiplier: 5,
+  nonPrimaryDirectionMultiplier: 3,
+  initialNonPrimaryMultiplier: 10
+};
+
 // Priority Queue implementation optimized for A* pathfinding
 class PriorityQueue<T extends { f: number; h: number }> {
   private items: T[] = [];
+  private nodeMap = new Map<string, number>();
+
+  constructor() { }
+
+  // Generate a unique key for a node
+  private getNodeKey(item: any): string {
+    if ('x' in item && 'y' in item) {
+      return `${item.x},${item.y}`;
+    }
+    return JSON.stringify(item);
+  }
 
   public push(item: T): void {
+    const index = this.items.length;
     this.items.push(item);
-    this.bubbleUp(this.items.length - 1);
+    this.nodeMap.set(this.getNodeKey(item), index);
+    this.bubbleUp(index);
   }
 
   public pop(): T | undefined {
     if (this.items.length === 0) return undefined;
-    
+
     const result = this.items[0];
     const last = this.items.pop()!;
-    
+    this.nodeMap.delete(this.getNodeKey(result));
+
     if (this.items.length > 0) {
       this.items[0] = last;
+      this.nodeMap.set(this.getNodeKey(last), 0);
       this.bubbleDown(0);
     }
-    
+
     return result;
   }
 
@@ -42,13 +86,19 @@ class PriorityQueue<T extends { f: number; h: number }> {
   }
 
   private bubbleUp(index: number): void {
+    const item = this.items[index];
     while (index > 0) {
       const parentIndex = Math.floor((index - 1) / 2);
       if (this.compare(this.items[index], this.items[parentIndex]) >= 0) break;
-      
-      [this.items[parentIndex], this.items[index]] = 
-      [this.items[index], this.items[parentIndex]];
-      
+
+      // Swap items
+      [this.items[parentIndex], this.items[index]] =
+        [this.items[index], this.items[parentIndex]];
+
+      // Update map
+      this.nodeMap.set(this.getNodeKey(this.items[parentIndex]), parentIndex);
+      this.nodeMap.set(this.getNodeKey(this.items[index]), index);
+
       index = parentIndex;
     }
   }
@@ -59,21 +109,26 @@ class PriorityQueue<T extends { f: number; h: number }> {
       const leftChild = 2 * index + 1;
       const rightChild = 2 * index + 2;
 
-      if (leftChild < this.items.length && 
-          this.compare(this.items[leftChild], this.items[smallest]) < 0) {
+      if (leftChild < this.items.length &&
+        this.compare(this.items[leftChild], this.items[smallest]) < 0) {
         smallest = leftChild;
       }
 
-      if (rightChild < this.items.length && 
-          this.compare(this.items[rightChild], this.items[smallest]) < 0) {
+      if (rightChild < this.items.length &&
+        this.compare(this.items[rightChild], this.items[smallest]) < 0) {
         smallest = rightChild;
       }
 
       if (smallest === index) break;
 
-      [this.items[index], this.items[smallest]] = 
-      [this.items[smallest], this.items[index]];
-      
+      // Swap items
+      [this.items[index], this.items[smallest]] =
+        [this.items[smallest], this.items[index]];
+
+      // Update map
+      this.nodeMap.set(this.getNodeKey(this.items[index]), index);
+      this.nodeMap.set(this.getNodeKey(this.items[smallest]), smallest);
+
       index = smallest;
     }
   }
@@ -89,9 +144,24 @@ class PriorityQueue<T extends { f: number; h: number }> {
     return this.items.find(predicate);
   }
 
+  public contains(x: number, y: number): boolean {
+    return this.nodeMap.has(`${x},${y}`);
+  }
+
+  public getNode(x: number, y: number): T | undefined {
+    const index = this.nodeMap.get(`${x},${y}`);
+    return index !== undefined ? this.items[index] : undefined;
+  }
+
   public update(item: T): void {
-    const index = this.items.findIndex(i => i === item);
-    if (index !== -1) {
+    const key = this.getNodeKey(item);
+    const index = this.nodeMap.get(key);
+
+    if (index !== undefined) {
+      // Update the item in place
+      this.items[index] = item;
+
+      // Reheapify
       this.bubbleUp(index);
       this.bubbleDown(index);
     }
@@ -103,44 +173,50 @@ export class AStarGrid {
   private cols: number;
   private grid: GridCell[][];
   private debug: boolean;
+  private costConfig: PathCostConfig;
 
-  constructor(grid: GridCell[][], debug: boolean = false) {
+  constructor(
+    grid: GridCell[][],
+    costConfig: Partial<PathCostConfig> = {},
+    debug: boolean = false
+  ) {
     this.grid = grid;
     this.rows = grid.length;
     this.cols = grid[0]?.length || 0;
     this.debug = debug;
+    this.costConfig = { ...DEFAULT_COST_CONFIG, ...costConfig };
   }
 
-  private heuristic(ax: number, ay: number, bx: number, by: number) {
-    // Modified heuristic that heavily favors cardinal movements
-    const dx = Math.abs(ax - bx);
-    const dy = Math.abs(ay - by);
-    
-    // Base cost is Manhattan distance
-    const baseCost = dx + dy;
-    
-    // Add a small penalty for situations that might require diagonal movement
-    // This helps maintain cardinal preference while still allowing diagonal when necessary
-    const diagonalPotentialPenalty = Math.min(dx, dy) * 0.001;
-    
-    return baseCost + diagonalPotentialPenalty;
+  /**
+   * Manhattan distance heuristic - optimized for cardinal movements
+   * This is more appropriate than diagonal distance when only cardinal moves are allowed
+   */
+  private heuristic(ax: number, ay: number, bx: number, by: number): number {
+    // Pure Manhattan distance for cardinal movement
+    return Math.abs(ax - bx) + Math.abs(ay - by);
   }
 
+  /**
+   * Get cardinal direction from one point to another
+   */
   private getDirection(
     fromX: number,
     fromY: number,
     toX: number,
     toY: number
-  ): string {
-    if (toX > fromX) return 'right';
-    if (toX < fromX) return 'left';
-    if (toY > fromY) return 'down';
-    if (toY < fromY) return 'up';
-    return 'none';
+  ): Direction {
+    if (toX > fromX) return Direction.RIGHT;
+    if (toX < fromX) return Direction.LEFT;
+    if (toY > fromY) return Direction.DOWN;
+    if (toY < fromY) return Direction.UP;
+    return Direction.NONE;
   }
 
+  /**
+   * Determine if a direction is towards the goal
+   */
   private isDirectionTowardsGoal(
-    direction: string,
+    direction: Direction,
     currentX: number,
     currentY: number,
     goalX: number,
@@ -150,19 +226,22 @@ export class AStarGrid {
     const dy = goalY - currentY;
 
     switch (direction) {
-      case 'right':
-        return dx > 0 && Math.abs(dx) > Math.abs(dy);
-      case 'left':
-        return dx < 0 && Math.abs(dx) > Math.abs(dy);
-      case 'down':
-        return dy > 0 && Math.abs(dy) > Math.abs(dx);
-      case 'up':
-        return dy < 0 && Math.abs(dy) > Math.abs(dx);
+      case Direction.RIGHT:
+        return dx > 0;
+      case Direction.LEFT:
+        return dx < 0;
+      case Direction.DOWN:
+        return dy > 0;
+      case Direction.UP:
+        return dy < 0;
       default:
         return false;
     }
   }
 
+  /**
+   * Calculate movement cost with configurable penalties
+   */
   private calculateMovementCost(
     current: AStarNode,
     nextX: number,
@@ -170,27 +249,32 @@ export class AStarGrid {
     goalX: number,
     goalY: number
   ): number {
-    // Base movement cost
-    const baseCost = 1000;
-    
+    const {
+      baseCost,
+      turnPenaltyMultiplier,
+      wrongDirectionMultiplier,
+      cardinalChangeMultiplier,
+      nonPrimaryDirectionMultiplier,
+      initialNonPrimaryMultiplier
+    } = this.costConfig;
+
     // Calculate primary direction to goal
     const dx = goalX - current.x;
     const dy = goalY - current.y;
     const isHorizontalPrimary = Math.abs(dx) > Math.abs(dy);
-    
+
     // Calculate movement direction
     const moveX = nextX - current.x;
     const moveY = nextY - current.y;
+    const currentDirection = this.getDirection(current.x, current.y, nextX, nextY);
 
     let cost = baseCost;
 
     // If this is the first move from the start node
     if (!current.parent) {
-      // Strongly encourage initial movement in primary direction
-      if (isHorizontalPrimary && moveY !== 0) {
-        cost *= 10; // Heavy penalty for not moving in primary direction
-      } else if (!isHorizontalPrimary && moveX !== 0) {
-        cost *= 10;
+      // Encourage initial movement in primary direction
+      if ((isHorizontalPrimary && moveY !== 0) || (!isHorizontalPrimary && moveX !== 0)) {
+        cost *= initialNonPrimaryMultiplier;
       }
       return cost;
     }
@@ -198,37 +282,33 @@ export class AStarGrid {
     // Get previous movement
     const prevMoveX = current.x - current.parent.x;
     const prevMoveY = current.y - current.parent.y;
+    const prevDirection = current.direction as Direction;
 
-    // Penalties
-    const turnPenalty = baseCost * 8;        // Penalty for changing direction
-    const wrongDirPenalty = baseCost * 12;   // Penalty for moving away from goal
-    const directionChangePenalty = baseCost * 5; // Penalty for changing cardinal direction
+    // Apply penalties
 
-    // Penalize direction changes
-    if (moveX !== prevMoveX || moveY !== prevMoveY) {
-      cost += turnPenalty;
-      
-      // Extra penalty for changing cardinal direction
-      if ((prevMoveX !== 0 && moveY !== 0) || (prevMoveY !== 0 && moveX !== 0)) {
-        cost += directionChangePenalty;
+    // 1. Penalize direction changes
+    if (currentDirection !== prevDirection && prevDirection !== Direction.NONE) {
+      cost += baseCost * turnPenaltyMultiplier;
+
+      // Extra penalty for changing cardinal direction (e.g., horizontal to vertical)
+      const isCurrentHorizontal = moveX !== 0;
+      const isPrevHorizontal = prevMoveX !== 0;
+
+      if (isCurrentHorizontal !== isPrevHorizontal) {
+        cost += baseCost * cardinalChangeMultiplier;
       }
     }
 
-    // Penalize moving away from goal
-    if ((dx > 0 && moveX < 0) || (dx < 0 && moveX > 0)) {
-      cost += wrongDirPenalty;
-    }
-    if ((dy > 0 && moveY < 0) || (dy < 0 && moveY > 0)) {
-      cost += wrongDirPenalty;
+    // 2. Penalize moving away from goal
+    if (!this.isDirectionTowardsGoal(currentDirection, current.x, current.y, goalX, goalY)) {
+      cost += baseCost * wrongDirectionMultiplier;
     }
 
-    // Penalize non-primary direction movement more when far from goal
+    // 3. Penalize non-primary direction movement when far from goal
     const distanceToGoal = Math.abs(dx) + Math.abs(dy);
     if (distanceToGoal > 2) {
-      if (isHorizontalPrimary && moveY !== 0) {
-        cost += baseCost * 3;
-      } else if (!isHorizontalPrimary && moveX !== 0) {
-        cost += baseCost * 3;
+      if ((isHorizontalPrimary && moveY !== 0) || (!isHorizontalPrimary && moveX !== 0)) {
+        cost += baseCost * nonPrimaryDirectionMultiplier;
       }
     }
 
@@ -242,7 +322,9 @@ export class AStarGrid {
           dy,
           moveX,
           moveY,
-          distanceToGoal
+          distanceToGoal,
+          currentDirection,
+          prevDirection
         }
       );
     }
@@ -250,6 +332,9 @@ export class AStarGrid {
     return cost;
   }
 
+  /**
+   * Find a path from start to end using A* algorithm
+   */
   public findPath(
     startX: number,
     startY: number,
@@ -266,7 +351,7 @@ export class AStarGrid {
       g: 0,
       h: this.heuristic(startX, startY, endX, endY),
       f: 0,
-      direction: 'none',
+      direction: Direction.NONE,
     };
     startNode.f = startNode.g + startNode.h;
     open.push(startNode);
@@ -285,9 +370,10 @@ export class AStarGrid {
           path.push([node.x, node.y] as Point);
           node = node.parent;
         }
+
         if (debug && path.length > 0) {
           let turns = 0;
-          let lastDirection = '';
+          let lastDirection = Direction.NONE;
 
           for (let i = 1; i < path.length; i++) {
             const direction = this.getDirection(
@@ -296,28 +382,32 @@ export class AStarGrid {
               path[i][0],
               path[i][1]
             );
-            if (lastDirection && direction !== lastDirection) {
+            if (lastDirection !== Direction.NONE && direction !== lastDirection) {
               turns++;
             }
             lastDirection = direction;
           }
+
+          console.log(`Path found with ${path.length} steps and ${turns} turns`);
         }
+
         return path.reverse();
       }
 
       closed.add(currentKey);
 
-      // Explore neighbors
+      // Explore neighbors - only cardinal directions (no diagonals)
       const neighbors = [
-        [current.x + 1, current.y],
-        [current.x - 1, current.y],
-        [current.x, current.y + 1],
-        [current.x, current.y - 1],
+        [current.x + 1, current.y], // right
+        [current.x - 1, current.y], // left
+        [current.x, current.y + 1], // down
+        [current.x, current.y - 1], // up
       ];
 
       for (const [nx, ny] of neighbors) {
         const neighborKey = key(nx, ny);
 
+        // Skip invalid or closed nodes
         if (
           nx < 0 ||
           ny < 0 ||
@@ -329,6 +419,7 @@ export class AStarGrid {
           continue;
         }
 
+        // Calculate costs
         const movementCost = this.calculateMovementCost(
           current,
           nx,
@@ -339,31 +430,34 @@ export class AStarGrid {
         const gCost = current.g + movementCost;
         const hCost = this.heuristic(nx, ny, endX, endY);
         const fCost = gCost + hCost;
+        const direction = this.getDirection(current.x, current.y, nx, ny);
 
-        const existing = open.find((o) => o.x === nx && o.y === ny);
-        if (!existing || gCost < existing.g) {
-          const direction = this.getDirection(current.x, current.y, nx, ny);
-          if (existing) {
-            existing.g = gCost;
-            existing.f = fCost;
-            existing.parent = current;
-            existing.direction = direction;
-            open.update(existing);
-          } else {
-            open.push({
-              x: nx,
-              y: ny,
-              g: gCost,
-              h: hCost,
-              f: fCost,
-              parent: current,
-              direction: direction,
-            });
-          }
+        // Check if node is in open list
+        const existing = open.getNode(nx, ny);
+
+        if (!existing) {
+          // Add new node to open list
+          open.push({
+            x: nx,
+            y: ny,
+            g: gCost,
+            h: hCost,
+            f: fCost,
+            parent: current,
+            direction,
+          });
+        } else if (gCost < existing.g) {
+          // Update existing node if we found a better path
+          existing.g = gCost;
+          existing.f = fCost;
+          existing.parent = current;
+          existing.direction = direction;
+          open.update(existing);
         }
       }
     }
 
+    // No path found
     return [];
   }
 }
