@@ -1,16 +1,27 @@
-# mothersip-ship-gen
+# mothership-ship-gen
 
 To install dependencies:
 
 ```bash
-bun install
+pnpm install
 ```
 
-To run:
+To run the development server:
 
 ```bash
-bun dev
+pnpm dev
 ```
 
-This project was created using `bun init` in bun v1.2.0. [Bun](https://bun.sh)
-is a fast all-in-one JavaScript runtime.
+To build for production:
+
+```bash
+pnpm build
+```
+
+To preview the production build:
+
+```bash
+pnpm preview
+```
+
+This project was created using Vite. [Vite](https://vitejs.dev/) is a modern frontend build tool that provides a faster and leaner development experience.
