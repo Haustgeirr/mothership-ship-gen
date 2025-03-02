@@ -36,11 +36,11 @@ export interface PathCostConfig {
 // Default cost configuration
 const DEFAULT_COST_CONFIG: PathCostConfig = {
   baseCost: 1000,
-  turnPenaltyMultiplier: 8,
-  wrongDirectionMultiplier: 12,
-  cardinalChangeMultiplier: 5,
-  nonPrimaryDirectionMultiplier: 3,
-  initialNonPrimaryMultiplier: 10
+  turnPenaltyMultiplier: 4,
+  wrongDirectionMultiplier: 8,
+  cardinalChangeMultiplier: 3,
+  nonPrimaryDirectionMultiplier: 2,
+  initialNonPrimaryMultiplier: 5
 };
 
 // Priority Queue implementation optimized for A* pathfinding
@@ -269,13 +269,17 @@ export class AStarGrid {
     const currentDirection = this.getDirection(current.x, current.y, nextX, nextY);
 
     let cost = baseCost;
+    const penalties: { reason: string, amount: number }[] = [];
 
     // If this is the first move from the start node
     if (!current.parent) {
       // Encourage initial movement in primary direction
       if ((isHorizontalPrimary && moveY !== 0) || (!isHorizontalPrimary && moveX !== 0)) {
-        cost *= initialNonPrimaryMultiplier;
+        const penalty = baseCost * (initialNonPrimaryMultiplier - 1);
+        cost += penalty;
+        penalties.push({ reason: 'Initial non-primary direction', amount: penalty });
       }
+
       return cost;
     }
 
@@ -288,45 +292,36 @@ export class AStarGrid {
 
     // 1. Penalize direction changes
     if (currentDirection !== prevDirection && prevDirection !== Direction.NONE) {
-      cost += baseCost * turnPenaltyMultiplier;
+      const turnPenalty = baseCost * turnPenaltyMultiplier;
+      cost += turnPenalty;
+      penalties.push({ reason: 'Direction change', amount: turnPenalty });
 
       // Extra penalty for changing cardinal direction (e.g., horizontal to vertical)
       const isCurrentHorizontal = moveX !== 0;
       const isPrevHorizontal = prevMoveX !== 0;
 
       if (isCurrentHorizontal !== isPrevHorizontal) {
-        cost += baseCost * cardinalChangeMultiplier;
+        const cardinalPenalty = baseCost * cardinalChangeMultiplier;
+        cost += cardinalPenalty;
+        penalties.push({ reason: 'Cardinal direction change', amount: cardinalPenalty });
       }
     }
 
     // 2. Penalize moving away from goal
     if (!this.isDirectionTowardsGoal(currentDirection, current.x, current.y, goalX, goalY)) {
-      cost += baseCost * wrongDirectionMultiplier;
+      const wrongDirPenalty = baseCost * wrongDirectionMultiplier;
+      cost += wrongDirPenalty;
+      penalties.push({ reason: 'Moving away from goal', amount: wrongDirPenalty });
     }
 
     // 3. Penalize non-primary direction movement when far from goal
     const distanceToGoal = Math.abs(dx) + Math.abs(dy);
     if (distanceToGoal > 2) {
       if ((isHorizontalPrimary && moveY !== 0) || (!isHorizontalPrimary && moveX !== 0)) {
-        cost += baseCost * nonPrimaryDirectionMultiplier;
+        const nonPrimaryPenalty = baseCost * nonPrimaryDirectionMultiplier;
+        cost += nonPrimaryPenalty;
+        penalties.push({ reason: 'Non-primary direction movement', amount: nonPrimaryPenalty });
       }
-    }
-
-    if (this.debug) {
-      console.log(
-        `Move ${current.x},${current.y} -> ${nextX},${nextY}:`,
-        {
-          cost,
-          isHorizontalPrimary,
-          dx,
-          dy,
-          moveX,
-          moveY,
-          distanceToGoal,
-          currentDirection,
-          prevDirection
-        }
-      );
     }
 
     return cost;
@@ -340,8 +335,15 @@ export class AStarGrid {
     startY: number,
     endX: number,
     endY: number,
-    debug: boolean = false
+    debug: boolean = false,
+    isSecondary: boolean = false
   ): Point[] {
+    // Log path start information
+    if (isSecondary) {
+      console.log(`\n=== Finding Secondary Path ===`);
+      console.log(`From: (${startX}, ${startY}) To: (${endX}, ${endY})`);
+    }
+
     const open = new PriorityQueue<AStarNode>();
     const closed = new Set<string>();
 
@@ -357,8 +359,11 @@ export class AStarGrid {
     open.push(startNode);
 
     const key = (x: number, y: number) => `${x},${y}`;
+    let iterations = 0;
+    let maxIterations = 1000; // Safety limit
 
-    while (open.length > 0) {
+    while (open.length > 0 && iterations < maxIterations) {
+      iterations++;
       const current = open.pop()!;
       const currentKey = key(current.x, current.y);
 
@@ -371,16 +376,23 @@ export class AStarGrid {
           node = node.parent;
         }
 
-        if (debug && path.length > 0) {
+        // Reverse path to get start-to-end order
+        const finalPath = path.reverse();
+
+        if (isSecondary) {
+          // Log the final path for secondary links
+          console.log(`Path found with ${finalPath.length} points after ${iterations} iterations`);
+
+          // Count turns in the path
           let turns = 0;
           let lastDirection = Direction.NONE;
 
-          for (let i = 1; i < path.length; i++) {
+          for (let i = 1; i < finalPath.length; i++) {
             const direction = this.getDirection(
-              path[i - 1][0],
-              path[i - 1][1],
-              path[i][0],
-              path[i][1]
+              finalPath[i - 1][0],
+              finalPath[i - 1][1],
+              finalPath[i][0],
+              finalPath[i][1]
             );
             if (lastDirection !== Direction.NONE && direction !== lastDirection) {
               turns++;
@@ -388,21 +400,78 @@ export class AStarGrid {
             lastDirection = direction;
           }
 
-          console.log(`Path found with ${path.length} steps and ${turns} turns`);
+          console.log(`Path has ${turns} turns`);
+
+          // Log path points in a more readable format
+          console.log("Path coordinates:");
+          let pathStr = "";
+          finalPath.forEach((point, index) => {
+            pathStr += `(${point[0]},${point[1]})`;
+            if (index < finalPath.length - 1) {
+              pathStr += " → ";
+              // Add line breaks for readability
+              if ((index + 1) % 5 === 0) {
+                pathStr += "\n";
+              }
+            }
+          });
+          console.log(pathStr);
+          console.log(`=== End of Path ===\n`);
         }
 
-        return path.reverse();
+        return finalPath;
       }
 
       closed.add(currentKey);
 
       // Explore neighbors - only cardinal directions (no diagonals)
-      const neighbors = [
-        [current.x + 1, current.y], // right
-        [current.x - 1, current.y], // left
-        [current.x, current.y + 1], // down
-        [current.x, current.y - 1], // up
-      ];
+      let neighbors: [number, number][];
+
+      if (isSecondary) {
+        // For secondary links, prioritize neighbors based on direction to goal
+        const dx = endX - current.x;
+        const dy = endY - current.y;
+
+        // Determine primary and secondary directions
+        const primaryDirs: [number, number][] = [];
+        const secondaryDirs: [number, number][] = [];
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          // Horizontal is primary
+          if (dx > 0) primaryDirs.push([current.x + 1, current.y]);
+          else if (dx < 0) primaryDirs.push([current.x - 1, current.y]);
+
+          if (dy > 0) secondaryDirs.push([current.x, current.y + 1]);
+          else if (dy < 0) secondaryDirs.push([current.x, current.y - 1]);
+        } else {
+          // Vertical is primary
+          if (dy > 0) primaryDirs.push([current.x, current.y + 1]);
+          else if (dy < 0) primaryDirs.push([current.x, current.y - 1]);
+
+          if (dx > 0) secondaryDirs.push([current.x + 1, current.y]);
+          else if (dx < 0) secondaryDirs.push([current.x - 1, current.y]);
+        }
+
+        // Add opposite directions last
+        if (dx <= 0) secondaryDirs.push([current.x + 1, current.y]);
+        if (dx >= 0) secondaryDirs.push([current.x - 1, current.y]);
+        if (dy <= 0) secondaryDirs.push([current.x, current.y + 1]);
+        if (dy >= 0) secondaryDirs.push([current.x, current.y - 1]);
+
+        // Combine directions with primary first
+        neighbors = [...primaryDirs, ...secondaryDirs];
+
+        // Remove duplicates
+        neighbors = [...new Map(neighbors.map(n => [n.toString(), n])).values()];
+      } else {
+        // Standard neighbor exploration for primary links
+        neighbors = [
+          [current.x + 1, current.y], // right
+          [current.x - 1, current.y], // left
+          [current.x, current.y + 1], // down
+          [current.x, current.y - 1], // up
+        ];
+      }
 
       for (const [nx, ny] of neighbors) {
         const neighborKey = key(nx, ny);
@@ -455,6 +524,10 @@ export class AStarGrid {
           open.update(existing);
         }
       }
+    }
+
+    if (debug) {
+      console.warn(`No path found after ${iterations} iterations or max iterations reached`);
     }
 
     // No path found

@@ -46,13 +46,13 @@ if (shouldPersistSeed && localStorage.getItem(SEED_KEY)) {
 } else {
   // Otherwise use the current timestamp
   // Initialize PRNG, generator and renderer
-  // seed = 1738277232585;
+  seed = 1738277232585;
   // seed = 1738405946252;
   // seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
   // seed = 1738879581226; //  straight path solve
   // seed = 1738879852013; //  straight path solve 2
   // seed = 1738880047796; //  straight path solve 2
-  seed = 1740871377536;
+  // seed = 1740871377536;
   // seed = Date.now();
 }
 

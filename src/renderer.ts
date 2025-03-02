@@ -3,6 +3,9 @@ import type { DungeonGraph, RoomNode, RoomLink } from './types';
 import { AStarGrid, type GridCell } from './AStarGrid';
 import { DUNGEON_CONSTANTS } from './constants';
 
+// Define Point type for path coordinates
+type Point = [number, number];
+
 interface NodeBounds {
   width: number;
   height: number;
@@ -93,48 +96,111 @@ export class DungeonRenderer {
     grid: GridCell[][],
     cellSize: number
   ): { x: number; y: number } | null {
+    console.group(`Finding best connection point for Room ${room.id} → Room ${target.id}`);
+
     const roomX = Math.floor(room.x / cellSize);
     const roomY = Math.floor(room.y / cellSize);
     const targetX = Math.floor(target.x / cellSize);
     const targetY = Math.floor(target.y / cellSize);
 
+    console.log(`Room ${room.id} grid position: (${roomX}, ${roomY})`);
+    console.log(`Target ${target.id} grid position: (${targetX}, ${targetY})`);
+
     // Get the general direction to the target
     const dx = targetX - roomX;
     const dy = targetY - roomY;
+    console.log(`Direction vector: dx=${dx}, dy=${dy}`);
 
-    // Check points around the room in order of preference
-    const checkPoints: Array<[number, number]> = [];
+    // Generate candidate points around the room
+    const candidatePoints: Array<[number, number]> = [];
 
-    if (Math.abs(dx) > Math.abs(dy)) {
-      // Prefer horizontal connections
-      checkPoints.push(
-        [roomX + Math.sign(dx), roomY], // Side towards target
-        [roomX, roomY + Math.sign(dy)], // Perpendicular side
-        [roomX, roomY - Math.sign(dy)], // Other perpendicular side
-        [roomX - Math.sign(dx), roomY]  // Opposite side
-      );
-    } else {
-      // Prefer vertical connections
-      checkPoints.push(
-        [roomX, roomY + Math.sign(dy)], // Side towards target
-        [roomX + Math.sign(dx), roomY], // Perpendicular side
-        [roomX - Math.sign(dx), roomY], // Other perpendicular side
-        [roomX, roomY - Math.sign(dy)]  // Opposite side
-      );
-    }
+    // Add points in all four directions
+    candidatePoints.push(
+      [roomX + 1, roomY], // East
+      [roomX - 1, roomY], // West
+      [roomX, roomY + 1], // South
+      [roomX, roomY - 1]  // North
+    );
 
-    // Find the first walkable point
-    for (const [x, y] of checkPoints) {
+    // Add diagonal points for more options
+    candidatePoints.push(
+      [roomX + 1, roomY + 1], // Southeast
+      [roomX + 1, roomY - 1], // Northeast
+      [roomX - 1, roomY + 1], // Southwest
+      [roomX - 1, roomY - 1]  // Northwest
+    );
+
+    console.log(`Generated ${candidatePoints.length} candidate points:`, candidatePoints);
+
+    // Filter to valid points and find walkable cells
+    const validPoints: Array<{ x: number, y: number, score: number }> = [];
+
+    for (const [x, y] of candidatePoints) {
       // Check if point is within grid bounds
       if (x >= 0 && x < grid[0].length && y >= 0 && y < grid.length) {
-        // Check adjacent cells to find a walkable one
+        // Find a walkable cell near this point
         const walkable = this.findNearestWalkableCell(x, y, grid);
         if (walkable) {
-          return walkable;
+          // Calculate a score for this point based on:
+          // 1. Manhattan distance to target (lower is better)
+          // 2. Whether it's in the general direction of the target (preferred)
+          const distanceToTarget = Math.abs(walkable.x - targetX) + Math.abs(walkable.y - targetY);
+
+          // Direction alignment score - higher if the point is in the same direction as the target
+          let directionScore = 0;
+          const pointDx = x - roomX;
+          const pointDy = y - roomY;
+
+          // If the point is in the same general direction as the target, give it a bonus
+          if ((pointDx > 0 && dx > 0) || (pointDx < 0 && dx < 0)) directionScore += 10;
+          if ((pointDy > 0 && dy > 0) || (pointDy < 0 && dy < 0)) directionScore += 10;
+
+          // Prefer cardinal directions over diagonals when appropriate
+          if (Math.abs(dx) > Math.abs(dy) * 2 && pointDx !== 0 && pointDy === 0) directionScore += 5;
+          if (Math.abs(dy) > Math.abs(dx) * 2 && pointDy !== 0 && pointDx === 0) directionScore += 5;
+
+          // NEW: Penalize overshooting the target
+          const overshot =
+            (dx > 0 && walkable.x > targetX) ||
+            (dx < 0 && walkable.x < targetX) ||
+            (dy > 0 && walkable.y > targetY) ||
+            (dy < 0 && walkable.y < targetY);
+
+          const overshootPenalty = overshot ? 15 : 0;
+
+          // NEW: Prefer points that lead to shorter paths
+          // Calculate the actual path length from this point to the target
+          const pathLengthEstimate = Math.abs(walkable.x - targetX) + Math.abs(walkable.y - targetY);
+
+          // Calculate final score (lower is better)
+          // Add overshoot penalty and give more weight to path length
+          const score = pathLengthEstimate * 2 + overshootPenalty - directionScore;
+
+          validPoints.push({
+            x: walkable.x,
+            y: walkable.y,
+            score
+          });
+
+          console.log(`Point (${x}, ${y}) → walkable (${walkable.x}, ${walkable.y}), distance=${distanceToTarget}, dirScore=${directionScore}, overshootPenalty=${overshootPenalty}, pathLength=${pathLengthEstimate}, finalScore=${score}`);
+        } else {
+          console.log(`Point (${x}, ${y}) has no nearby walkable cells`);
         }
+      } else {
+        console.log(`Point (${x}, ${y}) is out of bounds`);
       }
     }
 
+    // Sort by score (lower is better) and return the best point
+    if (validPoints.length > 0) {
+      validPoints.sort((a, b) => a.score - b.score);
+      console.log(`Selected best point: (${validPoints[0].x}, ${validPoints[0].y}) with score ${validPoints[0].score}`);
+      console.groupEnd();
+      return validPoints[0];
+    }
+
+    console.warn('No valid connection points found');
+    console.groupEnd();
     return null;
   }
 
@@ -274,15 +340,24 @@ export class DungeonRenderer {
   ): string {
     const { grid, cellSize } = navigationData;
 
+    console.group(`Secondary Path: Room ${source.id} → Room ${target.id}`);
+    console.log(`Source room: (${Math.floor(source.x / cellSize)}, ${Math.floor(source.y / cellSize)})`);
+    console.log(`Target room: (${Math.floor(target.x / cellSize)}, ${Math.floor(target.y / cellSize)})`);
+
     // Find best connection points for both rooms
     const sourcePoint = this.findBestConnectionPoint(source, target, grid, cellSize);
     const targetPoint = this.findBestConnectionPoint(target, source, grid, cellSize);
 
     if (!sourcePoint || !targetPoint) {
+      console.warn('No valid connection points found, using direct line');
+      console.groupEnd();
       // Fallback to direct line if no path found
       return `M ${source.x + offsetX} ${source.y + offsetY} 
               L ${target.x + offsetX} ${target.y + offsetY}`;
     }
+
+    console.log(`Source connection point: (${sourcePoint.x}, ${sourcePoint.y}) [grid coordinates]`);
+    console.log(`Target connection point: (${targetPoint.x}, ${targetPoint.y}) [grid coordinates]`);
 
     // Find path between connection points
     const pathfinder = new AStarGrid(grid);
@@ -291,11 +366,37 @@ export class DungeonRenderer {
       sourcePoint.y,
       targetPoint.x,
       targetPoint.y,
-      true
+      true,
+      true // Use secondary path optimization
     );
 
+    console.log(`Raw path length: ${path.length} points`);
+    console.log('Raw path points (grid coordinates):', path);
+
+    // Simplify the path to remove unnecessary points
+    const simplifiedPath = this.simplifyPath(path);
+    console.log(`Simplified path length: ${simplifiedPath.length} points`);
+    console.log('Simplified path points (grid coordinates):', simplifiedPath);
+
+    // Count turns in the path
+    let turns = 0;
+    let lastDirection = '';
+    for (let i = 1; i < simplifiedPath.length; i++) {
+      const prev = simplifiedPath[i - 1];
+      const current = simplifiedPath[i];
+      const dx = current[0] - prev[0];
+      const dy = current[1] - prev[1];
+      const currentDirection = dx !== 0 ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+
+      if (lastDirection && currentDirection !== lastDirection) {
+        turns++;
+      }
+      lastDirection = currentDirection;
+    }
+    console.log(`Number of turns in path: ${turns}`);
+
     // Convert grid coordinates to world coordinates
-    const worldPath = path.map(([x, y]) => ({
+    const worldPath = simplifiedPath.map(([x, y]) => ({
       x: x * cellSize + offsetX,
       y: y * cellSize + offsetY,
     }));
@@ -322,6 +423,9 @@ export class DungeonRenderer {
       y: target.y - Math.sin(endAngle) * targetRadius + offsetY,
     };
 
+    console.log(`Adjusted start point: (${adjustedStart.x.toFixed(2)}, ${adjustedStart.y.toFixed(2)}) [world coordinates]`);
+    console.log(`Adjusted end point: (${adjustedEnd.x.toFixed(2)}, ${adjustedEnd.y.toFixed(2)}) [world coordinates]`);
+
     // Create path commands
     const pathCommands = [`M ${adjustedStart.x} ${adjustedStart.y}`];
 
@@ -333,7 +437,36 @@ export class DungeonRenderer {
     // End at adjusted target point
     pathCommands.push(`L ${adjustedEnd.x} ${adjustedEnd.y}`);
 
+    console.groupEnd();
     return pathCommands.join(' ');
+  }
+
+  /**
+   * Simplifies a path by removing unnecessary points that are in a straight line
+   */
+  private simplifyPath(path: Point[]): Point[] {
+    if (path.length <= 2) return path;
+
+    const result: Point[] = [path[0]];
+    let lastDirection: string | null = null;
+
+    for (let i = 1; i < path.length; i++) {
+      const prev = path[i - 1];
+      const current = path[i];
+
+      // Calculate current direction
+      const dx = current[0] - prev[0];
+      const dy = current[1] - prev[1];
+      const currentDirection = dx !== 0 ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+
+      // If direction changed or this is the last point, add it to the result
+      if (currentDirection !== lastDirection || i === path.length - 1) {
+        result.push(current);
+        lastDirection = currentDirection;
+      }
+    }
+
+    return result;
   }
 
   private renderLinks(
@@ -606,7 +739,8 @@ export class DungeonRenderer {
       .attr('transform', (d) => {
         const endpoint = getPathEndpoint(d, false);
         const bounds = this.getConnectorBounds(d);
-        return `translate(${endpoint.x + offsetX - bounds.width / 2}, ${endpoint.y + offsetY - bounds.height / 2
+        return `translate(${endpoint.x + offsetX - bounds.width / 2
+          }, ${endpoint.y + offsetY - bounds.height / 2
           }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${bounds.height / 2
           })`;
       });
@@ -850,13 +984,15 @@ export class DungeonRenderer {
           .trim()
           .split(/[\s,]+/)
           .map(Number);
+        const angle = Math.atan2(
+          lastCmd[1] - prevCmd[1],
+          lastCmd[0] - prevCmd[0]
+        );
+
         return {
           x: lastCmd[0],
           y: lastCmd[1],
-          angle: Math.atan2(
-            lastCmd[1] - prevCmd[1],
-            lastCmd[0] - prevCmd[0]
-          ),
+          angle: angle,
         };
       }
     };

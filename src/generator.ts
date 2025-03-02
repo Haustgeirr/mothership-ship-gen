@@ -220,7 +220,6 @@ export class DungeonGenerator {
         if (cell.walkable) walkableCount++;
       })
     );
-    console.log('Initial walkable cells:', walkableCount);
 
     // Mark room cells as non-walkable (rooms block movement)
     for (const room of this.graph.rooms) {
@@ -261,7 +260,6 @@ export class DungeonGenerator {
         if (cell.walkable) walkableCount++;
       })
     );
-    console.log('Final walkable cells:', walkableCount);
 
     return { grid, cellSize: this.cellSize };
   }
