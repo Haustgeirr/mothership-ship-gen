@@ -6,6 +6,187 @@ import { PRNG } from './prng';
 import { Dice } from './dice';
 import { DUNGEON_CONSTANTS } from './constants';
 
+// ===== Sample D100 Outcome Tables =====
+
+/**
+ * Space Encounter Table (d100)
+ * Used to determine random encounters in deep space
+ */
+const shipTypeTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "Mining Frigate",
+    35: "Freighter",
+    58: "Raider",
+    72: "Executive Transport",
+    81: "Exploration Vessel",
+    85: "Jumpliner",
+    89: "Corvette",
+    92: "Troopship",
+    96: "Colony Ship"
+  },
+  "Unknown Ship"
+);
+
+const shipStatusTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "Uninhabitable",
+    85: "Habitable (Non-Functioning)",
+    95: "Habitable (Functioning)",
+  },
+  "Unknown Status"
+);
+
+const survivorsTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "No Survivors",
+    90: "2D10 Survivors (In Cryosleep)",
+    96: "Survivors",
+  },
+  "Unknown"
+);
+
+const shipSystemsTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "Reactor, Thrusters, Jump Drive non-functioning",
+    81: "Stable Reactor, Thrusters, Jump Drive",
+    94: "Unstable Warp Cores",
+  },
+  "Unknown Systems"
+);
+
+const salvageTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "2D100 Scrap",
+    50: "1D10 Fuel",
+    76: "1D5 Warp Cores",
+    82: "1D10 Cryopods",
+    86: "Medbay",
+    89: "Weapon",
+    92: "Computer",
+    96: "Jump Drive"
+  },
+  "Unknown Salvage"
+);
+
+const cargoTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "4D10 Containers of Ore",
+    61: "3D10 Containers of Metal",
+    76: "1D10 Containers of Random Cargo",
+    86: "1D10 Containers of Precious Metal",
+    93: "1D5 Containers of Contraband"
+  },
+  "No Cargo"
+);
+
+const causeOfRuinTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "Virus",
+    1: "Combat",
+    10: "Raided by Pirates",
+    20: "Jump Drive Malfunction",
+    25: "Abandoned Ship",
+    30: "Rogue AI",
+    35: "Mutiny",
+    40: "Crash: Other Ship",
+    45: "Crash: Space Debris",
+    50: "Crash: Jump Drive Miscalculation",
+    55: "Engine Failure",
+    58: "Cannibalism",
+    61: "Nerve Gas",
+    64: "Escape Pod Never Returned",
+    67: "Betrayal/Backstabbing",
+    70: "Succumbed to Nightmares",
+    72: "Hatch Opened, No Air",
+    74: "Cargo Created Mishap",
+    76: "Starvation",
+    78: "Part of a Conspiracy",
+    80: "Thrusters Slagged",
+    81: "Weapons System Malfunction",
+    82: "Cryosleep Never Disengaged",
+    83: "Complex Series of Events",
+    84: "Suicide Pact",
+    85: "Parasite Infestation",
+    86: "Environmental Systems Failure",
+    87: "Uncontrollable Fire",
+    88: "Failed Fraud Attempt",
+    89: "Void Worshiping",
+    90: "Bizarre Love Triangle",
+    91: "Fight Spiraled Out of Control",
+    92: "Chainsaw Rampage",
+    93: "Drug Addled Debauchery",
+    94: "Fatal Depressurization",
+    95: "Nightmares Ending in Heart Attack",
+    96: "Mob Hit",
+    97: "Crew Members Vanished",
+    98: "Prank Taken Too Far",
+    99: "William Tell Trick"
+  },
+  "Unknown Cause"
+);
+
+const weirdTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "Haunted",
+    1: "Inhabited by Alien Life",
+    10: "Terraformed by Strange Creatures",
+    20: "Crew Dressed for Costume Party",
+    25: "Crew All Identical",
+    30: "Crew was preparing Theatrical Performance",
+    35: "Morbid Artwork",
+    40: "Pet Hoarders",
+    45: "Erotic Sculptures",
+    50: "Communist Regalia",
+    55: "Company Uniform",
+    58: "Cult Members",
+    61: "Extensive Journals Kept",
+    64: "Strange Health Obsession",
+    67: "Unnervingly Clean",
+    70: "Android was poisoning Captain",
+    72: "Ancient Ship",
+    74: "Temporal Distortions",
+    76: "Failed Utopia",
+    78: "Crew Weighed and Measured Weekly",
+    80: "Extensive Body Modification",
+    81: "Isolated Physics Anomalies",
+    82: "Sexual Deviants",
+    83: "Religious Extremists",
+    84: "Transhumanist Android Worshipers",
+    85: "Anti-Android Conspirators",
+    86: "Nauseating Stench",
+    87: "Everything is Jury-Rigged",
+    88: "Crew Taking Video Through the Catastrophe",
+    89: "Body Horror",
+    90: "Scooby-Doo Crew",
+    91: "Interior Coated in Flesh, Doors are Membranes",
+    92: "Whispering Echoes Always a Room Ahead",
+    93: "Dolls in Macabre Tableaux",
+    94: "Dead Crew: Exploded Heads",
+    95: "Elaborately Posed Corpses (Hooks & Chains)",
+    96: "Flickering Lights and Frenzied Screams",
+    97: "Ship Rearranges Itself Frequently",
+    98: "Ship Has Infinite Depth",
+    99: "Fruit Basket, Greeting Card Inexplicably Addressed to Crew"
+  },
+  "Nothing unusual"
+);
+
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
 const seedInput = document.querySelector<HTMLInputElement>('#seed-input');
 const persistSeedCheckbox = document.querySelector<HTMLInputElement>('#persist-seed');
@@ -75,6 +256,36 @@ if (persistSeedCheckbox) {
     }
   });
 }
+
+
+// Roll on each table and log the results
+console.log("=== Rolling on all outcome tables ===");
+
+const shipType = Dice.rollWithOutcome(shipTypeTable);
+console.log(`Ship Type: ${shipType}`);
+
+const shipStatus = Dice.rollWithOutcome(shipStatusTable);
+console.log(`Ship Status: ${shipStatus}`);
+
+const survivors = Dice.rollWithOutcome(survivorsTable);
+console.log(`Survivors: ${survivors}`);
+
+const shipSystems = Dice.rollWithOutcome(shipSystemsTable);
+console.log(`Ship Systems: ${shipSystems}`);
+
+const salvage = Dice.rollWithOutcome(salvageTable);
+console.log(`Salvage: ${salvage}`);
+
+const cargo = Dice.rollWithOutcome(cargoTable);
+console.log(`Cargo: ${cargo}`);
+
+const causeOfRuin = Dice.rollWithOutcome(causeOfRuinTable);
+console.log(`Cause of Ruin: ${causeOfRuin}`);
+
+const weird = Dice.rollWithOutcome(weirdTable);
+console.log(`Weird Feature: ${weird}`);
+
+console.log("=== End of rolls ===");
 
 // Function to generate a dungeon with a specific seed
 function generateDungeon(seedValue: number) {
