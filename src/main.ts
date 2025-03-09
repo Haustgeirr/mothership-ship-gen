@@ -6,7 +6,76 @@ import { PRNG } from './prng';
 import { Dice } from './dice';
 import { DUNGEON_CONSTANTS } from './constants';
 
-// ===== Sample D100 Outcome Tables =====
+
+const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
+const seedInput = document.querySelector<HTMLInputElement>('#seed-input');
+const persistSeedCheckbox = document.querySelector<HTMLInputElement>('#persist-seed');
+const stepDisplay = document.querySelector<HTMLSpanElement>('#step-display');
+const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
+const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
+const lastStepButton = document.querySelector<HTMLButtonElement>('#last-step');
+const resetButton = document.querySelector<HTMLButtonElement>('#reset');
+
+if (!svgElement) {
+  throw new Error("SVG element with id 'dungeon-svg' not found");
+}
+
+// Local storage keys
+const SEED_KEY = 'dungeon-seed';
+const PERSIST_SEED_KEY = 'persist-dungeon-seed';
+
+// Check if we should use a persisted seed
+const shouldPersistSeed = localStorage.getItem(PERSIST_SEED_KEY) === 'true';
+let seed: number;
+
+if (shouldPersistSeed && localStorage.getItem(SEED_KEY)) {
+  // Use the persisted seed if available and persistence is enabled
+  seed = parseInt(localStorage.getItem(SEED_KEY) || '', 10);
+
+  // Update the checkbox state
+  if (persistSeedCheckbox) {
+    persistSeedCheckbox.checked = true;
+  }
+} else {
+  // Otherwise use the current timestamp
+  // Initialize PRNG, generator and renderer
+  seed = 1738277232585;
+  // seed = 1738405946252;
+  // seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
+  // seed = 1738879581226; //  straight path solve
+  // seed = 1738879852013; //  straight path solve 2
+  // seed = 1738880047796; //  straight path solve 2
+  // seed = 1740871377536;
+  // seed = Date.now();
+}
+
+// Initialize the PRNG with the seed
+new PRNG(seed);
+
+if (seedInput) {
+  seedInput.value = seed.toString();
+}
+
+// Initialize PRNG, generator and renderer
+// const seed = 1738277232585;
+// const seed = 1738405946252;
+// const seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
+// const seed = 1738879581226; //  straight path solve
+// const seed = 1738879852013; //  straight path solve 2
+// const seed = 1738880047796; //  straight path solve 2
+
+// Set up event listeners for seed controls
+if (persistSeedCheckbox) {
+  persistSeedCheckbox.addEventListener('change', () => {
+    localStorage.setItem(PERSIST_SEED_KEY, persistSeedCheckbox.checked.toString());
+
+    // If persistence is enabled, save the current seed
+    if (persistSeedCheckbox.checked && seedInput) {
+      localStorage.setItem(SEED_KEY, seedInput.value);
+    }
+  });
+}
+
 
 /**
  * Space Encounter Table (d100)
@@ -66,14 +135,14 @@ const salvageTable = Dice.createOutcomeTable(
   100,
   1,
   {
-    0: "2D100 Scrap",
-    50: "1D10 Fuel",
-    76: "1D5 Warp Cores",
-    82: "1D10 Cryopods",
+    0: `${Dice.roll(100, 2).total} Scrap`,
+    50: `${Dice.roll(10, 1).total} Fuel`,
+    76: `${Dice.roll(5, 1).total} Warp Cores`,
+    82: `${Dice.roll(10, 1).total} Cryopods`,
     86: "Medbay",
     89: "Weapon",
     92: "Computer",
-    96: "Jump Drive"
+    96: `${Dice.roll(10, 1).total} Jump Drive`
   },
   "Unknown Salvage"
 );
@@ -82,11 +151,11 @@ const cargoTable = Dice.createOutcomeTable(
   100,
   1,
   {
-    0: "4D10 Containers of Ore",
-    61: "3D10 Containers of Metal",
-    76: "1D10 Containers of Random Cargo",
-    86: "1D10 Containers of Precious Metal",
-    93: "1D5 Containers of Contraband"
+    0: `${Dice.roll(10, 4).total} Containers of Ore`,
+    61: `${Dice.roll(10, 3).total} Containers of Metal`,
+    76: `${Dice.roll(10, 1).total} Containers of Random Cargo`,
+    86: `${Dice.roll(10, 1).total} Containers of Precious Metal`,
+    93: `${Dice.roll(5, 1).total} Containers of Contraband`
   },
   "No Cargo"
 );
@@ -187,79 +256,113 @@ const weirdTable = Dice.createOutcomeTable(
   "Nothing unusual"
 );
 
-const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
-const seedInput = document.querySelector<HTMLInputElement>('#seed-input');
-const persistSeedCheckbox = document.querySelector<HTMLInputElement>('#persist-seed');
-const stepDisplay = document.querySelector<HTMLSpanElement>('#step-display');
-const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
-const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
-const lastStepButton = document.querySelector<HTMLButtonElement>('#last-step');
-const resetButton = document.querySelector<HTMLButtonElement>('#reset');
+const randomCargoTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "Body Bags (Full)",
+    1: "Wine",
+    10: "Complex Navigational Equipment",
+    20: "Ceramics",
+    25: "Antique Books",
+    30: "Garden Gnomes (Full of Illegal Stimulants)",
+    35: "Opium",
+    40: "Tea",
+    45: "Silver Bars",
+    50: "Sensitive Documents",
+    55: "Anthropology Mission",
+    58: "Botanists/Horticulturists",
+    61: "Industrial Engineers/Architects",
+    64: "Terraforming Equipment",
+    67: "Hydroponic Plants",
+    70: "Rare Wood",
+    72: "Lab Rats",
+    74: "Cultured Cells",
+    76: "Cremains",
+    78: "Drug Production Starter Equipment",
+    80: "Common Cloth",
+    81: "Designer Clothes",
+    82: "Expensive Fish (Food)",
+    83: "Pets",
+    84: "Plastic Junk (gewgaws)",
+    85: "Legionaries (guns & ammo)",
+    86: "Religious Pilgrims (religious texts and symbols)",
+    87: "Compressed Algae Blocks (1 = days rations, gross)",
+    88: "Disarmed Ordnance (lacking detonators)",
+    89: "Cars (high end)",
+    90: "Medicine",
+    91: "Cosmetics",
+    92: "Race Horse Reproductive Material",
+    93: "Livestock",
+    94: "Prisoners",
+    95: "Mobile Black Site (used for completely illegal interrogation)",
+    96: "Census Takers",
+    97: "Cadmium",
+    98: "Preserved Fruit",
+    99: "Refugees"
+  },
+  "Unknown Cargo" // default outcome
+);
 
-if (!svgElement) {
-  throw new Error("SVG element with id 'dungeon-svg' not found");
-}
+const namePartATable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "IAGO",
+    1: "HECATE",
+    2: "OBERON",
+    3: "WHITEHALL",
+    4: "DUNCAN",
+    5: "BANQUO",
+    6: "WINTER",
+    7: "MARLOWE",
+    8: "TEMPEST",
+    9: "FAUST",
+  },
+  "Unknown Name Part A"
+);
 
-// Local storage keys
-const SEED_KEY = 'dungeon-seed';
-const PERSIST_SEED_KEY = 'persist-dungeon-seed';
+const namePartBTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "VALEFOR",
+    1: "OPHANIM",
+    2: "MARAX",
+    3: "MARINER",
+    4: "LABOLAS",
+    5: "ASTAROTH",
+    6: "CHERUBIM",
+    7: "TYRANT",
+    8: "BALAAM",
+    9: "MURMUR",
+  },
+  "Unknown Name Part A"
+);
 
-// Initialize PRNG, generator and renderer
-// const seed = 1738277232585;
-// const seed = 1738405946252;
-// const seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
-// const seed = 1738879581226; //  straight path solve
-// const seed = 1738879852013; //  straight path solve 2
-// const seed = 1738880047796; //  straight path solve 2
-
-// Check if we should use a persisted seed
-const shouldPersistSeed = localStorage.getItem(PERSIST_SEED_KEY) === 'true';
-let seed: number;
-
-if (shouldPersistSeed && localStorage.getItem(SEED_KEY)) {
-  // Use the persisted seed if available and persistence is enabled
-  seed = parseInt(localStorage.getItem(SEED_KEY) || '', 10);
-
-  // Update the checkbox state
-  if (persistSeedCheckbox) {
-    persistSeedCheckbox.checked = true;
-  }
-} else {
-  // Otherwise use the current timestamp
-  // Initialize PRNG, generator and renderer
-  seed = 1738277232585;
-  // seed = 1738405946252;
-  // seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
-  // seed = 1738879581226; //  straight path solve
-  // seed = 1738879852013; //  straight path solve 2
-  // seed = 1738880047796; //  straight path solve 2
-  // seed = 1740871377536;
-  // seed = Date.now();
-}
-
-// Initialize the PRNG with the seed
-new PRNG(seed);
-
-
-if (seedInput) {
-  seedInput.value = seed.toString();
-}
-
-// Set up event listeners for seed controls
-if (persistSeedCheckbox) {
-  persistSeedCheckbox.addEventListener('change', () => {
-    localStorage.setItem(PERSIST_SEED_KEY, persistSeedCheckbox.checked.toString());
-
-    // If persistence is enabled, save the current seed
-    if (persistSeedCheckbox.checked && seedInput) {
-      localStorage.setItem(SEED_KEY, seedInput.value);
-    }
-  });
-}
+const namePartCTable = Dice.createOutcomeTable(
+  100,
+  1,
+  {
+    0: "ECHO",
+    1: "ALPHA",
+    2: "OMEGA",
+    3: "KING",
+    4: "BEGGAR",
+    5: "DELTA",
+    6: "EPSILON",
+    7: "JIBRIL",
+    8: "BRAVO",
+    9: "TANGO",
+  },
+  "Unknown Name Part A"
+);
 
 
 // Roll on each table and log the results
 console.log("=== Rolling on all outcome tables ===");
+
+console.log(`${Dice.rollWithOutcome(namePartATable)} ${Dice.rollWithOutcome(namePartBTable)} ${Dice.rollWithOutcome(namePartCTable)}`);
 
 const shipType = Dice.rollWithOutcome(shipTypeTable);
 console.log(`Ship Type: ${shipType}`);
@@ -284,6 +387,9 @@ console.log(`Cause of Ruin: ${causeOfRuin}`);
 
 const weird = Dice.rollWithOutcome(weirdTable);
 console.log(`Weird Feature: ${weird}`);
+
+const randomCargo = Dice.rollWithOutcome(randomCargoTable);
+console.log(`Random Cargo: ${randomCargo}`);
 
 console.log("=== End of rolls ===");
 

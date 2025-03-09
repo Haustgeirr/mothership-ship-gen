@@ -185,4 +185,45 @@ export class Dice {
 
     return { sides, quantity, outcomes, defaultOutcome };
   }
+
+  /**
+   * Parses a string containing dice notation (e.g., "4D10 Containers of Ore") and replaces
+   * the dice notation with actual rolled values.
+   * 
+   * @param text The string containing dice notation to parse and roll
+   * @returns The string with dice notation replaced by actual rolled values
+   * 
+   * Examples:
+   * "4D10 Containers of Ore" might return "27 Containers of Ore"
+   * "You find 2D6 gold and 1D4 silver" might return "You find 8 gold and 3 silver"
+   */
+  public static parseAndRollDynamicString(text: string): string {
+    // Regular expression to match dice notation: XdY or XDY where X and Y are numbers
+    // Captures: group 1 = quantity (X), group 2 = sides (Y)
+    const diceRegex = /(\d+)[dD](\d+)/g;
+
+    // Replace all instances of dice notation with rolled values
+    return text.replace(diceRegex, (match, quantity, sides) => {
+      const quantityNum = parseInt(quantity, 10);
+      const sidesNum = parseInt(sides, 10);
+
+      // Roll the dice and return the total
+      const result = this.roll(sidesNum, quantityNum);
+      return result.total.toString();
+    });
+  }
+
+  /**
+   * Rolls with an outcome from a table and processes any dice notation in the outcome string
+   * 
+   * @param table The outcome table to use for determining the result
+   * @returns The outcome string with any dice notation replaced by actual rolled values
+   */
+  public static rollWithDynamicOutcome(table: OutcomeTable): string {
+    // First get the basic outcome string from the table
+    const outcomeString = this.rollWithOutcome(table);
+
+    // Then parse and roll any dice notation in the outcome string
+    return this.parseAndRollDynamicString(outcomeString);
+  }
 }
