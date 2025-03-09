@@ -24,6 +24,7 @@ export class DungeonRenderer {
   private currentStep: number = -1;
   private linkGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private gridGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+  private renderSecondaryConnections: boolean = false;
 
   constructor(svgElement: SVGSVGElement) {
     this.svg = d3.select(svgElement);
@@ -481,7 +482,9 @@ export class DungeonRenderer {
 
     // Render primary links first, then secondary
     const primaryLinks = graph.links.filter((l) => l.type === 'door');
-    const secondaryLinks = graph.links.filter((l) => l.type === 'secondary');
+    const secondaryLinks = this.renderSecondaryConnections
+      ? graph.links.filter((l) => l.type === 'secondary')
+      : [];
 
     // Function to create path
     const createPath = (d: RoomLink) => {
@@ -741,8 +744,8 @@ export class DungeonRenderer {
         const bounds = this.getConnectorBounds(d);
         return `translate(${endpoint.x + offsetX - bounds.width / 2
           }, ${endpoint.y + offsetY - bounds.height / 2
-          }) rotate(${(endpoint.angle * 180) / Math.PI}, ${bounds.width / 2}, ${bounds.height / 2
-          })`;
+          }) rotate(${(endpoint.angle * 180) / Math.PI
+          }, ${bounds.width / 2}, ${bounds.height / 2})`;
       });
   }
 
@@ -826,6 +829,11 @@ export class DungeonRenderer {
 
     if (!currentLink) return;
 
+    // Skip secondary connections if disabled
+    if (currentLink.type === 'secondary' && !this.renderSecondaryConnections) {
+      return;
+    }
+
     // Function to create path (reuse existing createPath logic)
     const createPath = (d: RoomLink) => {
       if (d.type === 'secondary') {
@@ -895,7 +903,7 @@ export class DungeonRenderer {
     // Add connectors based on link type
     if (currentLink.type === 'door') {
       this.renderDoorConnectorsForLink(currentLink, offsetX, offsetY);
-    } else {
+    } else if (this.renderSecondaryConnections) {
       this.renderSecondaryConnectorsForLink(currentLink, offsetX, offsetY);
     }
   }
@@ -1023,7 +1031,8 @@ export class DungeonRenderer {
       .attr('stroke', 'red')
       .attr('stroke-width', 1)
       .attr('transform', `translate(${targetEndpoint.x + offsetX - bounds.width / 2
-        }, ${targetEndpoint.y + offsetY - bounds.height / 2}) rotate(${(targetEndpoint.angle * 180) / Math.PI
+        }, ${targetEndpoint.y + offsetY - bounds.height / 2
+        }) rotate(${(targetEndpoint.angle * 180) / Math.PI
         }, ${bounds.width / 2}, ${bounds.height / 2})`);
   }
 
@@ -1052,25 +1061,45 @@ export class DungeonRenderer {
     }
 
     this.currentStep++;
+
+    // Skip secondary connections if disabled
+    if (
+      this.renderSecondaryConnections === false &&
+      this.graph.links[this.currentStep].type === 'secondary'
+    ) {
+      return this.nextStep();
+    }
+
     this.renderStep();
     return true;
   }
 
   public previousStep(): boolean {
-    if (!this.linkGroup || this.currentStep < 0) {
+    if (!this.graph || this.currentStep <= 0) {
       return false;
     }
 
-    // Remove the last rendered link and its connectors
-    const children = this.linkGroup.node()?.children;
-    if (children) {
-      // Remove the last 3 elements (path + 2 connectors)
-      for (let i = 0; i < 3; i++) {
-        children[children.length - 1]?.remove();
-      }
+    // Remove the current step's rendering
+    if (this.linkGroup) {
+      this.linkGroup.selectAll('*').remove();
     }
 
     this.currentStep--;
+
+    // Skip secondary connections if disabled
+    if (
+      this.renderSecondaryConnections === false &&
+      this.graph.links[this.currentStep].type === 'secondary'
+    ) {
+      return this.previousStep();
+    }
+
+    // Re-render all steps up to the current one
+    for (let i = 0; i <= this.currentStep; i++) {
+      this.currentStep = i;
+      this.renderStep();
+    }
+
     return true;
   }
 
@@ -1079,7 +1108,17 @@ export class DungeonRenderer {
   }
 
   public getTotalSteps(): number {
-    return this.graph?.links.length ?? 0;
+    if (!this.graph) return 0;
+
+    if (this.renderSecondaryConnections) {
+      return this.graph.links.length;
+    } else {
+      return this.graph.links.filter(link => link.type !== 'secondary').length;
+    }
+  }
+
+  public setRenderSecondaryConnections(render: boolean): void {
+    this.renderSecondaryConnections = render;
   }
 
   render(graph: DungeonGraph, navigationData: NavigationGridData): void {
