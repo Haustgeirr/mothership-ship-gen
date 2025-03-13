@@ -76,26 +76,50 @@ if (persistSeedCheckbox) {
   });
 }
 
+type ShipTypeDeadPlanet = {
+  name: string;
+  minDecks: number;
+  maxDecks: number;
+  roomsPerDeck: string;
+}
+
+const shipTypesDeadPlanet: Record<number, ShipTypeDeadPlanet> = {
+  0: { name: "Mining Frigate", minDecks: 10, maxDecks: 16, roomsPerDeck: "2d6" },
+  35: { name: "Freighter", minDecks: 5, maxDecks: 8, roomsPerDeck: "3d6" },
+  58: { name: "Raider", minDecks: 4, maxDecks: 4, roomsPerDeck: "1d6" },
+  72: { name: "Executive Transport", minDecks: 5, maxDecks: 5, roomsPerDeck: "2d6" },
+  81: { name: "Exploration Vessel", minDecks: 10, maxDecks: 30, roomsPerDeck: "4d6" },
+  85: { name: "Jumpliner", minDecks: 10, maxDecks: 15, roomsPerDeck: "3d6" },
+  89: { name: "Corvette", minDecks: 5, maxDecks: 8, roomsPerDeck: "5d6" },
+  92: { name: "Troopship", minDecks: 15, maxDecks: 30, roomsPerDeck: "3d6" },
+  96: { name: "Colony Ship", minDecks: 20, maxDecks: 60, roomsPerDeck: "5d6" },
+}
+
+type ShipTypeShipBreakers = {
+  name: string;
+  decks: string;
+}
+
+const shipTypesShipBreakers: Record<number, ShipTypeShipBreakers> = {
+  0: { name: "Mining Frigate", decks: "2d6" },
+  35: { name: "Freighter", decks: "3d6" },
+  58: { name: "Raider", decks: "1d6" },
+  72: { name: "Executive Transport", decks: "2d6" },
+  81: { name: "Exploration Vessel", decks: "4d6" },
+  85: { name: "Jumpliner", decks: "3d6" },
+  89: { name: "Corvette", decks: "5d6" },
+  92: { name: "Troopship", decks: "3d6" },
+  96: { name: "Colony Ship", decks: "5d6" },
+}
 
 /**
  * Space Encounter Table (d100)
  * Used to determine random encounters in deep space
  */
-const shipTypeTable = Dice.createOutcomeTable(
+const shipTypeTable = Dice.createOutcomeTable<ShipTypeDeadPlanet>(
   100,
   1,
-  {
-    0: "Mining Frigate",
-    35: "Freighter",
-    58: "Raider",
-    72: "Executive Transport",
-    81: "Exploration Vessel",
-    85: "Jumpliner",
-    89: "Corvette",
-    92: "Troopship",
-    96: "Colony Ship"
-  },
-  "Unknown Ship"
+  shipTypesDeadPlanet
 );
 
 const shipStatusTable = Dice.createOutcomeTable(
@@ -104,9 +128,8 @@ const shipStatusTable = Dice.createOutcomeTable(
   {
     0: "Uninhabitable",
     85: "Habitable (Non-Functioning)",
-    95: "Habitable (Functioning)",
-  },
-  "Unknown Status"
+    95: "Habitable (Functioning)"
+  }
 );
 
 const survivorsTable = Dice.createOutcomeTable(
@@ -115,9 +138,8 @@ const survivorsTable = Dice.createOutcomeTable(
   {
     0: "No Survivors",
     90: "2D10 Survivors (In Cryosleep)",
-    96: "Survivors",
-  },
-  "Unknown"
+    96: "Survivors"
+  }
 );
 
 const shipSystemsTable = Dice.createOutcomeTable(
@@ -126,9 +148,8 @@ const shipSystemsTable = Dice.createOutcomeTable(
   {
     0: "Reactor, Thrusters, Jump Drive non-functioning",
     81: "Stable Reactor, Thrusters, Jump Drive",
-    94: "Unstable Warp Cores",
-  },
-  "Unknown Systems"
+    94: "Unstable Warp Cores"
+  }
 );
 
 const salvageTable = Dice.createOutcomeTable(
@@ -142,9 +163,8 @@ const salvageTable = Dice.createOutcomeTable(
     86: "Medbay",
     89: "Weapon",
     92: "Computer",
-    96: `${Dice.roll(10, 1).total} Jump Drive`
-  },
-  "Unknown Salvage"
+    96: "Jump Drive"
+  }
 );
 
 const cargoTable = Dice.createOutcomeTable(
@@ -156,8 +176,7 @@ const cargoTable = Dice.createOutcomeTable(
     76: `${Dice.roll(10, 1).total} Containers of Random Cargo`,
     86: `${Dice.roll(10, 1).total} Containers of Precious Metal`,
     93: `${Dice.roll(5, 1).total} Containers of Contraband`
-  },
-  "No Cargo"
+  }
 );
 
 const causeOfRuinTable = Dice.createOutcomeTable(
@@ -204,8 +223,7 @@ const causeOfRuinTable = Dice.createOutcomeTable(
     97: "Crew Members Vanished",
     98: "Prank Taken Too Far",
     99: "William Tell Trick"
-  },
-  "Unknown Cause"
+  }
 );
 
 const weirdTable = Dice.createOutcomeTable(
@@ -252,8 +270,7 @@ const weirdTable = Dice.createOutcomeTable(
     97: "Ship Rearranges Itself Frequently",
     98: "Ship Has Infinite Depth",
     99: "Fruit Basket, Greeting Card Inexplicably Addressed to Crew"
-  },
-  "Nothing unusual"
+  }
 );
 
 const randomCargoTable = Dice.createOutcomeTable(
@@ -300,8 +317,7 @@ const randomCargoTable = Dice.createOutcomeTable(
     97: "Cadmium",
     98: "Preserved Fruit",
     99: "Refugees"
-  },
-  "Unknown Cargo" // default outcome
+  }
 );
 
 const namePartATable = Dice.createOutcomeTable(
@@ -317,9 +333,8 @@ const namePartATable = Dice.createOutcomeTable(
     6: "WINTER",
     7: "MARLOWE",
     8: "TEMPEST",
-    9: "FAUST",
-  },
-  "Unknown Name Part A"
+    9: "FAUST"
+  }
 );
 
 const namePartBTable = Dice.createOutcomeTable(
@@ -335,9 +350,8 @@ const namePartBTable = Dice.createOutcomeTable(
     6: "CHERUBIM",
     7: "TYRANT",
     8: "BALAAM",
-    9: "MURMUR",
-  },
-  "Unknown Name Part A"
+    9: "MURMUR"
+  }
 );
 
 const namePartCTable = Dice.createOutcomeTable(
@@ -353,9 +367,8 @@ const namePartCTable = Dice.createOutcomeTable(
     6: "EPSILON",
     7: "JIBRIL",
     8: "BRAVO",
-    9: "TANGO",
-  },
-  "Unknown Name Part A"
+    9: "TANGO"
+  }
 );
 
 
@@ -365,7 +378,16 @@ console.log("=== Rolling on all outcome tables ===");
 console.log(`${Dice.rollWithOutcome(namePartATable)} ${Dice.rollWithOutcome(namePartBTable)} ${Dice.rollWithOutcome(namePartCTable)}`);
 
 const shipType = Dice.rollWithOutcome(shipTypeTable);
-console.log(`Ship Type: ${shipType}`);
+console.log(`Ship Type: ${shipType.name}`);
+
+console.log(`It has ${Dice.roll(6, 1).total + shipType.minDecks} decks`);
+
+// Generate rooms for each deck
+const numDecks = Dice.roll(shipType.maxDecks - shipType.minDecks + 1).total + shipType.minDecks - 1;
+for (let i = 0; i < numDecks; i++) {
+  const roomCount = Dice.rollFromNotation(shipType.roomsPerDeck).total;
+  console.log(`Deck ${i + 1} has ${roomCount} rooms`);
+}
 
 const shipStatus = Dice.rollWithOutcome(shipStatusTable);
 console.log(`Ship Status: ${shipStatus}`);

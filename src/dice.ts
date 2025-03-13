@@ -11,10 +11,10 @@ export interface DiceRollResult {
 /**
  * Represents a range of values and their associated outcome
  */
-export interface OutcomeRange {
+export interface OutcomeRange<T = string> {
   min: number;
   max: number;
-  outcome: string;
+  outcome: T;
 }
 
 /**
@@ -22,12 +22,15 @@ export interface OutcomeRange {
  * The keys are the roll values and the values are the outcomes
  * For example: { 1: "Critical failure", 10: "Success", 20: "Critical success" }
  * In this example, rolling 1-9 gives "Critical failure", 10-19 gives "Success", and 20 gives "Critical success"
+ * 
+ * The generic type T allows for complex outcome types beyond just strings
+ * 
+ * Note: The first entry in the outcomes object MUST be at the minimum possible value (0 or 1)
  */
-export interface OutcomeTable {
+export interface OutcomeTable<T = string> {
   sides: number;
   quantity: number;
-  outcomes: Record<number, string>;
-  defaultOutcome?: string;
+  outcomes: Record<number, T>;
 }
 
 /**
@@ -79,10 +82,10 @@ export class Dice {
   /**
    * Rolls dice and returns an outcome based on the provided outcome table
    * @param table The outcome table to use for determining the result
-   * @returns The outcome string corresponding to the roll result
+   * @returns The outcome corresponding to the roll result
    * @throws Error if PRNG singleton hasn't been initialized or if no matching outcome is found
    */
-  public static rollWithOutcome(table: OutcomeTable): string {
+  public static rollWithOutcome<T = string>(table: OutcomeTable<T>): T {
     // Infer the minimum value from the outcomes
     const minValue = this.inferMinValue(table.outcomes);
     const result = this.roll(table.sides, table.quantity, minValue);
@@ -94,19 +97,42 @@ export class Dice {
    * @param outcomes The outcomes object
    * @returns The inferred minimum value (0 or 1)
    */
-  private static inferMinValue(outcomes: Record<number, string>): number {
+  private static inferMinValue<T>(outcomes: Record<number, T>): number {
     const keys = Object.keys(outcomes).map(Number);
     return keys.some(key => key === 0) ? 0 : 1;
+  }
+
+  /**
+   * Validates that the outcome table has an entry at the minimum possible value
+   * @param outcomes The outcomes object
+   * @param minValue The minimum value (0 or 1)
+   * @param quantity The number of dice
+   * @throws Error if the outcome table doesn't have an entry at the minimum possible value
+   */
+  private static validateMinimumOutcome<T>(
+    outcomes: Record<number, T>,
+    minValue: number,
+    quantity: number
+  ): void {
+    const minPossible = minValue * quantity;
+    const hasMinEntry = Object.keys(outcomes).map(Number).includes(minPossible);
+
+    if (!hasMinEntry) {
+      throw new Error(
+        `Outcome table must have an entry at the minimum possible value (${minPossible}). ` +
+        `This ensures all possible rolls have a defined outcome.`
+      );
+    }
   }
 
   /**
    * Looks up an outcome from a table based on a value
    * @param value The value to look up in the outcome table
    * @param table The outcome table to use for determining the result
-   * @returns The outcome string corresponding to the value
-   * @throws Error if no matching outcome is found and no default is provided
+   * @returns The outcome corresponding to the value
+   * @throws Error if no matching outcome is found
    */
-  public static getOutcome(value: number, table: OutcomeTable): string {
+  public static getOutcome<T = string>(value: number, table: OutcomeTable<T>): T {
     // Infer the minimum value from the outcomes
     const minValue = this.inferMinValue(table.outcomes);
 
@@ -117,6 +143,9 @@ export class Dice {
     if (value < minPossible || value > maxPossible) {
       throw new Error(`Value ${value} is outside the possible range (${minPossible}-${maxPossible}) for ${table.quantity}d${table.sides}`);
     }
+
+    // Validate that the table has an entry at the minimum possible value
+    this.validateMinimumOutcome(table.outcomes, minValue, table.quantity);
 
     // Get all threshold values from the outcomes object
     const thresholds = Object.keys(table.outcomes)
@@ -138,10 +167,7 @@ export class Dice {
       return table.outcomes[selectedThreshold];
     }
 
-    if (table.defaultOutcome !== undefined) {
-      return table.defaultOutcome;
-    }
-
+    // This should never happen if validateMinimumOutcome passes
     throw new Error(`No outcome found for value ${value} in the provided table`);
   }
 
@@ -150,17 +176,13 @@ export class Dice {
    * @param sides The number of sides on each die
    * @param quantity The number of dice to roll (default: 1)
    * @param outcomes An object where keys are threshold values and values are outcomes
-   *                 For example: { 1: "Critical failure", 10: "Success", 20: "Critical success" }
-   *                 Or for 0-based dice: { 0: "Critical failure", 50: "Success", 99: "Critical success" }
-   * @param defaultOutcome Optional default outcome if no threshold matches
    * @returns A properly formatted OutcomeTable
    */
-  public static createOutcomeTable(
+  public static createOutcomeTable<T = string>(
     sides: number,
     quantity: number = 1,
-    outcomes: Record<number, string>,
-    defaultOutcome?: string
-  ): OutcomeTable {
+    outcomes: Record<number, T>
+  ): OutcomeTable<T> {
     if (sides < 1) throw new Error('Dice must have at least 1 side');
     if (quantity < 1) throw new Error('Must have at least 1 die');
 
@@ -183,7 +205,10 @@ export class Dice {
       }
     }
 
-    return { sides, quantity, outcomes, defaultOutcome };
+    // Validate that the table has an entry at the minimum possible value
+    this.validateMinimumOutcome(outcomes, minValue, quantity);
+
+    return { sides, quantity, outcomes };
   }
 
   /**
@@ -219,11 +244,56 @@ export class Dice {
    * @param table The outcome table to use for determining the result
    * @returns The outcome string with any dice notation replaced by actual rolled values
    */
-  public static rollWithDynamicOutcome(table: OutcomeTable): string {
+  public static rollWithDynamicOutcome(table: OutcomeTable<string>): string {
     // First get the basic outcome string from the table
     const outcomeString = this.rollWithOutcome(table);
 
     // Then parse and roll any dice notation in the outcome string
     return this.parseAndRollDynamicString(outcomeString);
+  }
+
+  /**
+   * Parses a dice notation string (e.g., "2d6", "3D10") into quantity and sides
+   * @param notation The dice notation string to parse
+   * @returns An object containing the quantity, sides, and optional minimum value
+   * @throws Error if the notation is invalid
+   */
+  public static parseDiceNotation(notation: string): { quantity: number; sides: number; minValue?: number } {
+    // Regular expression to match dice notation: XdY or XDY where X and Y are numbers
+    // Optionally matches +Z or -Z for minimum value adjustment
+    const diceRegex = /^(\d+)[dD](\d+)(?:([+-])(\d+))?$/;
+    const match = notation.match(diceRegex);
+
+    if (!match) {
+      throw new Error(`Invalid dice notation: ${notation}. Expected format like "2d6" or "3D10+1"`);
+    }
+
+    const quantity = parseInt(match[1], 10);
+    const sides = parseInt(match[2], 10);
+
+    // Handle optional minimum value adjustment
+    let minValue = 1; // Default minimum value
+    if (match[3] && match[4]) {
+      const adjustment = parseInt(match[4], 10);
+      if (match[3] === '+') {
+        minValue += adjustment;
+      } else if (match[3] === '-') {
+        minValue -= adjustment;
+        if (minValue < 0) minValue = 0;
+      }
+    }
+
+    return { quantity, sides, minValue };
+  }
+
+  /**
+   * Rolls dice based on a dice notation string
+   * @param notation The dice notation string (e.g., "2d6", "3D10")
+   * @returns An object containing the total and individual roll results
+   * @throws Error if the notation is invalid or PRNG singleton hasn't been initialized
+   */
+  public static rollFromNotation(notation: string): DiceRollResult {
+    const { quantity, sides, minValue } = this.parseDiceNotation(notation);
+    return this.roll(sides, quantity, minValue || 1);
   }
 }
