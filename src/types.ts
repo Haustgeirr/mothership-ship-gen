@@ -28,6 +28,10 @@ export interface GenerationConfig {
   minSecondaryLinks?: number;
   maxSecondaryLinks?: number;
   cellSize?: number;
+  numDecks?: number;
+  roomsPerDeck?: number;
+  roomsPerDeckArray?: number[];
+  randomizeRoomsPerDeck?: boolean;
 }
 
 export interface NavigationGridData {

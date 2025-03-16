@@ -1,5 +1,6 @@
 import './styles.css';
 import { DungeonGenerator } from './generator';
+import { ShipGenerator } from './shipGenerator';
 import { DungeonRenderer } from './renderer';
 import type { GenerationConfig } from './types';
 import { PRNG } from './prng';
@@ -15,14 +16,24 @@ const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
 const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
 const lastStepButton = document.querySelector<HTMLButtonElement>('#last-step');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
-
-if (!svgElement) {
-  throw new Error("SVG element with id 'dungeon-svg' not found");
+// Add toggle for generator type
+const generatorToggle = document.createElement('div');
+generatorToggle.innerHTML = `
+  <label style="display: flex; align-items: center; margin-bottom: 10px;">
+    <input type="checkbox" id="ship-generator-toggle" checked>
+    <span style="margin-left: 8px;">Use Ship Generator</span>
+  </label>
+`;
+const controlsContainer = document.querySelector('.controls');
+if (controlsContainer) {
+  controlsContainer.insertBefore(generatorToggle, controlsContainer.firstChild);
 }
+const shipGeneratorToggle = document.querySelector<HTMLInputElement>('#ship-generator-toggle');
 
 // Local storage keys
 const SEED_KEY = 'dungeon-seed';
 const PERSIST_SEED_KEY = 'persist-dungeon-seed';
+const GENERATOR_TYPE_KEY = 'generator-type';
 
 // Check if we should use a persisted seed
 const shouldPersistSeed = localStorage.getItem(PERSIST_SEED_KEY) === 'true';
@@ -39,14 +50,15 @@ if (shouldPersistSeed && localStorage.getItem(SEED_KEY)) {
 } else {
   // Otherwise use the current timestamp
   // Initialize PRNG, generator and renderer
-  seed = 1738277232585;
-  // seed = 1738405946252;
-  // seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
-  // seed = 1738879581226; //  straight path solve
-  // seed = 1738879852013; //  straight path solve 2
-  // seed = 1738880047796; //  straight path solve 2
-  // seed = 1740871377536;
-  // seed = Date.now();
+  // seed = 1738277232585;
+  // seed = 1742164405073;
+  seed = Date.now();
+}
+
+// Get generator type from local storage or default to ship generator
+const useShipGenerator = localStorage.getItem(GENERATOR_TYPE_KEY) === 'ship' || true;
+if (shipGeneratorToggle) {
+  shipGeneratorToggle.checked = useShipGenerator;
 }
 
 // Initialize the PRNG with the seed
@@ -116,10 +128,10 @@ const shipTypesShipBreakers: Record<number, ShipTypeShipBreakers> = {
  * Space Encounter Table (d100)
  * Used to determine random encounters in deep space
  */
-const shipTypeTable = Dice.createOutcomeTable<ShipTypeDeadPlanet>(
+const shipTypeTable = Dice.createOutcomeTable<ShipTypeShipBreakers>(
   100,
   1,
-  shipTypesDeadPlanet
+  shipTypesShipBreakers
 );
 
 const shipStatusTable = Dice.createOutcomeTable(
@@ -372,49 +384,6 @@ const namePartCTable = Dice.createOutcomeTable(
 );
 
 
-// Roll on each table and log the results
-console.log("=== Rolling on all outcome tables ===");
-
-console.log(`${Dice.rollWithOutcome(namePartATable)} ${Dice.rollWithOutcome(namePartBTable)} ${Dice.rollWithOutcome(namePartCTable)}`);
-
-const shipType = Dice.rollWithOutcome(shipTypeTable);
-console.log(`Ship Type: ${shipType.name}`);
-
-console.log(`It has ${Dice.roll(6, 1).total + shipType.minDecks} decks`);
-
-// Generate rooms for each deck
-const numDecks = Dice.roll(shipType.maxDecks - shipType.minDecks + 1).total + shipType.minDecks - 1;
-for (let i = 0; i < numDecks; i++) {
-  const roomCount = Dice.rollFromNotation(shipType.roomsPerDeck).total;
-  console.log(`Deck ${i + 1} has ${roomCount} rooms`);
-}
-
-const shipStatus = Dice.rollWithOutcome(shipStatusTable);
-console.log(`Ship Status: ${shipStatus}`);
-
-const survivors = Dice.rollWithOutcome(survivorsTable);
-console.log(`Survivors: ${survivors}`);
-
-const shipSystems = Dice.rollWithOutcome(shipSystemsTable);
-console.log(`Ship Systems: ${shipSystems}`);
-
-const salvage = Dice.rollWithOutcome(salvageTable);
-console.log(`Salvage: ${salvage}`);
-
-const cargo = Dice.rollWithOutcome(cargoTable);
-console.log(`Cargo: ${cargo}`);
-
-const causeOfRuin = Dice.rollWithOutcome(causeOfRuinTable);
-console.log(`Cause of Ruin: ${causeOfRuin}`);
-
-const weird = Dice.rollWithOutcome(weirdTable);
-console.log(`Weird Feature: ${weird}`);
-
-const randomCargo = Dice.rollWithOutcome(randomCargoTable);
-console.log(`Random Cargo: ${randomCargo}`);
-
-console.log("=== End of rolls ===");
-
 // Function to generate a dungeon with a specific seed
 function generateDungeon(seedValue: number) {
   // Store the seed if persistence is enabled
@@ -422,48 +391,114 @@ function generateDungeon(seedValue: number) {
     localStorage.setItem(SEED_KEY, seedValue.toString());
   }
 
-  // Initialize the PRNG with the new seed
-  new PRNG(seedValue);
-
-  // Generate dungeon configuration using dice rolls
-  const numRooms = Dice.roll(6, 4).total; // 4d6 rooms
-
-  const config: GenerationConfig = {
-    numRooms,
-    dungeonWidth: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
-    dungeonHeight: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
-    branchingFactor: Dice.roll(100).total, // d100: higher means more linear
-    directionalBias: Dice.roll(100).total, // d100: higher means more likely to continue same direction
-    minSecondaryLinks: Dice.roll(2).total, // 1d2 minimum secondary connections
-    maxSecondaryLinks: Dice.roll(2).total + 2, // 1d2+2 maximum secondary connections
-    cellSize: DUNGEON_CONSTANTS.CELL_SIZE,
-  };
-
-  console.log('Generating dungeon with config:', config);
-
-  // Generate the dungeon
-  const dungeon = generator.generate(config);
-
-  if (generator.validateDungeon(dungeon)) {
-    console.log('Generated valid dungeon with:', {
-      rooms: dungeon.rooms.length,
-      links: dungeon.links.length,
-    });
-    const navigationData = generator.createNavigationGrid();
-
-    // Initialize the render but don't draw links yet
-    renderer.initializeRender(dungeon, navigationData);
-
-    // Immediately advance to the last step
-    while (renderer.nextStep()) { }
-
-    // Update step display
-    updateStepDisplay();
-  } else {
-    console.error('Generated dungeon is not fully connected');
-    const navigationData = generator.createNavigationGrid();
-    renderer.renderDebug(dungeon, navigationData);
+  // Save generator preference
+  if (shipGeneratorToggle) {
+    localStorage.setItem(GENERATOR_TYPE_KEY, shipGeneratorToggle.checked ? 'ship' : 'dungeon');
   }
+
+  // Roll on each table and log the results
+  console.log("=== Rolling on all outcome tables ===");
+
+  console.log(`${Dice.rollWithOutcome(namePartATable)} ${Dice.rollWithOutcome(namePartBTable)} ${Dice.rollWithOutcome(namePartCTable)}`);
+
+  const shipType = Dice.rollWithOutcome(shipTypeTable);
+  console.log(`Ship Type: ${shipType.name} decks: ${shipType.decks}`);
+
+  const shipStatus = Dice.rollWithOutcome(shipStatusTable);
+  console.log(`Ship Status: ${shipStatus}`);
+
+  const survivors = Dice.rollWithOutcome(survivorsTable);
+  console.log(`Survivors: ${survivors}`);
+
+  const shipSystems = Dice.rollWithOutcome(shipSystemsTable);
+  console.log(`Ship Systems: ${shipSystems}`);
+
+  const salvage = Dice.rollWithOutcome(salvageTable);
+  console.log(`Salvage: ${salvage}`);
+
+  const cargo = Dice.rollWithOutcome(cargoTable);
+  console.log(`Cargo: ${cargo}`);
+
+  const causeOfRuin = Dice.rollWithOutcome(causeOfRuinTable);
+  console.log(`Cause of Ruin: ${causeOfRuin}`);
+
+  const weird = Dice.rollWithOutcome(weirdTable);
+  console.log(`Weird Feature: ${weird}`);
+
+  const randomCargo = Dice.rollWithOutcome(randomCargoTable);
+  console.log(`Random Cargo: ${randomCargo}`);
+
+  console.log("=== End of rolls ===");
+
+  let dungeon;
+  let navigationData;
+
+  // Use the appropriate generator based on the toggle
+  if (shipGeneratorToggle && shipGeneratorToggle.checked) {
+    // Ship Generator
+    // Use the existing shipType from line 391 instead of selecting a new random one
+    console.log(`Using existing ship type: ${shipType.name} with ${shipType.decks} decks`);
+
+    // Generate the ship layout using our new generator
+    dungeon = shipGenerator.generateShipFromType(shipType);
+
+    if (shipGenerator.validateDungeon(dungeon)) {
+      console.log('Generated valid ship layout with:', {
+        rooms: dungeon.rooms.length,
+        links: dungeon.links.length,
+        shipType: shipType.name,
+        decks: shipType.decks,
+      });
+      navigationData = shipGenerator.createNavigationGrid();
+    } else {
+      console.error('Generated ship layout is not fully connected');
+      navigationData = shipGenerator.createNavigationGrid();
+      renderer.renderDebug(dungeon, navigationData);
+      return;
+    }
+  } else {
+    // Dungeon Generator
+    // Generate dungeon configuration using dice rolls
+    const numRooms = Dice.roll(6, 4).total; // 4d6 rooms
+
+    const config: GenerationConfig = {
+      numRooms,
+      dungeonWidth: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
+      dungeonHeight: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
+      branchingFactor: Dice.roll(100).total, // d100: higher means more linear
+      directionalBias: Dice.roll(100).total, // d100: higher means more likely to continue same direction
+      minSecondaryLinks: Dice.roll(2).total, // 1d2 minimum secondary connections
+      maxSecondaryLinks: Dice.roll(2).total + 2, // 1d2+2 maximum secondary connections
+      cellSize: DUNGEON_CONSTANTS.CELL_SIZE,
+    };
+
+    console.log('Generating dungeon with config:', config);
+
+    // Generate the dungeon
+    dungeon = dungeonGenerator.generate(config);
+
+    if (dungeonGenerator.validateDungeon(dungeon)) {
+      console.log('Generated valid dungeon with:', {
+        rooms: dungeon.rooms.length,
+        links: dungeon.links.length,
+      });
+      navigationData = dungeonGenerator.createNavigationGrid();
+    } else {
+      console.error('Generated dungeon is not fully connected');
+      navigationData = dungeonGenerator.createNavigationGrid();
+      renderer.renderDebug(dungeon, navigationData);
+      return;
+    }
+  }
+
+  // Initialize the render but don't draw links yet
+  renderer.initializeRender(dungeon, navigationData);
+
+  // Immediately advance to the last step
+  while (renderer.nextStep()) { }
+
+  // Update step display
+  updateStepDisplay();
 }
 
 // Set up seed input event listener
@@ -487,8 +522,22 @@ if (seedInput) {
   });
 }
 
-const generator = new DungeonGenerator();
+// Initialize generators
+const dungeonGenerator = new DungeonGenerator();
+const shipGenerator = new ShipGenerator();
+
+if (!svgElement) {
+  throw new Error("SVG element with id 'dungeon-svg' not found");
+}
 const renderer = new DungeonRenderer(svgElement);
+
+// Add event listener for generator toggle
+if (shipGeneratorToggle) {
+  shipGeneratorToggle.addEventListener('change', () => {
+    const newSeed = parseInt(seedInput?.value || Date.now().toString(), 10);
+    generateDungeon(newSeed);
+  });
+}
 
 // Update step display
 const updateStepDisplay = () => {
