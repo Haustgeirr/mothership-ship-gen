@@ -1,4 +1,23 @@
-// TODO: add room names, purpose and descriptions
+
+// v1.0
+// TODO: add room types, names, purpose and descriptions
+// TODO: remove renderer options
+// TODO: remove ship generator options
+// TODO: limit number of rooms per deck
+// TODO: start numbering rooms from 1
+// FIX: vertical overflow issue on high deck ships
+// FIX: d6 rooms dont seem to be able to shift their alignment far enough
+// TODO: add the ship description and remove the debug text
+// TODO: shrink the canvas size to fit the dungeon
+
+// v1.1
+// TODO: think about combining rooms into a large cell, maybe 2x2 or 3x3
+// TODO: bias rooms types based on the ship type, and overall ship layout 
+// -- eg cargo ships have bulkheads and narrow corridors, engines go at the bottom
+// TODO: Add officer/captains quarters
+// TODO: define crew, for active ships
+// TODO: roll up a ship sheet as well, use rolls for hardpoints and weapon placement
+// TODO: consider rules for boarding action
 
 import type {
   DungeonGraph,
