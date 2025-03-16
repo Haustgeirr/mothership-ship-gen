@@ -1,7 +1,7 @@
 import './styles.css';
 import { DungeonGenerator } from './generator';
 import { ShipGenerator } from './shipGenerator';
-import { DungeonRenderer } from './renderer';
+import { DungeonRenderer, SquareCellRenderer } from './renderer';
 import type { GenerationConfig } from './types';
 import { PRNG } from './prng';
 import { Dice } from './dice';
@@ -30,10 +30,24 @@ if (controlsContainer) {
 }
 const shipGeneratorToggle = document.querySelector<HTMLInputElement>('#ship-generator-toggle');
 
+// Add toggle for renderer type
+const rendererToggle = document.createElement('div');
+rendererToggle.innerHTML = `
+  <label style="display: flex; align-items: center; margin-bottom: 10px;">
+    <input type="checkbox" id="square-renderer-toggle">
+    <span style="margin-left: 8px;">Use Square Cell Renderer</span>
+  </label>
+`;
+if (controlsContainer) {
+  controlsContainer.insertBefore(rendererToggle, controlsContainer.firstChild);
+}
+const squareRendererToggle = document.querySelector<HTMLInputElement>('#square-renderer-toggle');
+
 // Local storage keys
 const SEED_KEY = 'dungeon-seed';
 const PERSIST_SEED_KEY = 'persist-dungeon-seed';
 const GENERATOR_TYPE_KEY = 'generator-type';
+const RENDERER_TYPE_KEY = 'renderer-type';
 
 // Check if we should use a persisted seed
 const shouldPersistSeed = localStorage.getItem(PERSIST_SEED_KEY) === 'true';
@@ -59,6 +73,12 @@ if (shouldPersistSeed && localStorage.getItem(SEED_KEY)) {
 const useShipGenerator = localStorage.getItem(GENERATOR_TYPE_KEY) === 'ship' || true;
 if (shipGeneratorToggle) {
   shipGeneratorToggle.checked = useShipGenerator;
+}
+
+// Get renderer type from local storage or default to circle renderer
+const useSquareRenderer = localStorage.getItem(RENDERER_TYPE_KEY) === 'square';
+if (squareRendererToggle) {
+  squareRendererToggle.checked = useSquareRenderer;
 }
 
 // Initialize the PRNG with the seed
@@ -529,7 +549,11 @@ const shipGenerator = new ShipGenerator();
 if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
 }
-const renderer = new DungeonRenderer(svgElement);
+
+// Create the appropriate renderer based on user selection
+const renderer = squareRendererToggle && squareRendererToggle.checked && svgElement
+  ? new SquareCellRenderer(svgElement)
+  : new DungeonRenderer(svgElement);
 
 // Add event listener for generator toggle
 if (shipGeneratorToggle) {
@@ -580,5 +604,16 @@ if (resetButton) {
       seedInput.value = newSeed.toString();
     }
     generateDungeon(newSeed);
+  });
+}
+
+// Save renderer preference when toggle changes
+if (squareRendererToggle) {
+  squareRendererToggle.addEventListener('change', () => {
+    localStorage.setItem(RENDERER_TYPE_KEY, squareRendererToggle.checked ? 'square' : 'circle');
+    // Regenerate with current seed to show the change
+    if (seedInput) {
+      generateDungeon(parseInt(seedInput.value, 10));
+    }
   });
 }
