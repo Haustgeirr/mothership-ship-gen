@@ -19,30 +19,7 @@
 
 <body class="max-w-6xl mx-auto p-5 font-sans">
   <h1 class="text-center text-gray-800 text-2xl font-bold mb-6">MRPG Ship Generator</h1>
-  <div class="mb-5 text-center">
-    <div class="controls mb-4 flex flex-col items-center justify-center">
-      <div class="flex items-center justify-center gap-2.5 mt-1.5">
-        <input type="number" id="seed-input" placeholder="Enter seed value"
-          class="px-2.5 py-1.5 border border-gray-300 rounded font-mono w-[150px]">
-        <label for="persist-seed" class="flex items-center gap-1">
-          <input type="checkbox" id="persist-seed" class="rounded"> Keep seed on refresh
-        </label>
-      </div>
-    </div>
-    <div class="flex items-center justify-center gap-2.5 mt-2.5">
-      <p>Progress: <span id="step-display" class="font-mono text-sm text-gray-600">Step 0 of 0</span></p>
-      <button id="prev-step"
-        class="px-4 py-2 text-sm bg-black text-white rounded hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">Previous</button>
-      <button id="next-step"
-        class="px-4 py-2 text-sm bg-black text-white rounded hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">Next</button>
-      <button id="last-step"
-        class="px-4 py-2 text-sm bg-black text-white rounded hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">Last
-        Step</button>
-      <button id="reset"
-        class="px-4 py-2 text-sm bg-black text-white rounded hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">Reset</button>
-    </div>
-  </div>
-  <svg id="dungeon-svg" width="800" height="600" class="border border-black block mx-auto"></svg>
+  <svg id="dungeon-svg" width="800" height="600" class="block mx-auto"></svg>
   <script type="module" src="./src/main.ts"></script>
 </body>
 

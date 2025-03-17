@@ -1,8 +1,6 @@
 // v1.0
 // TODO: add room types, names, purpose and descriptions
-// ✅ Fixed: vertical overflow issue on high deck ships
-// ✅ Fixed: canvas sized to exactly 11 cells width with dynamic height and 1-cell margin
-// TODO: add the ship description and remove the debug text
+// TODO: add the ship description
 
 // v1.1
 // TODO: think about combining rooms into a large cell, maybe 2x2 or 3x3

@@ -805,19 +805,20 @@ export class DungeonRenderer {
   ) {
     const cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
 
-    // Draw nodes with IDs for debugging
+    // Draw rooms as squares that fill cells
     const nodes = this.svg
       .append('g')
-      .selectAll<SVGCircleElement, RoomNode>('circle')
+      .selectAll<SVGRectElement, RoomNode>('rect')
       .data(graph.rooms)
       .enter()
-      .append('circle')
-      .attr('r', (d) => this.getNodeBounds(d).width / 2)
+      .append('rect')
+      .attr('width', cellSize)
+      .attr('height', cellSize)
+      .attr('x', (d) => Math.floor(d.x / cellSize) * cellSize + offsetX)  // Add offsetX
+      .attr('y', (d) => Math.floor(d.y / cellSize) * cellSize + offsetY)  // Add offsetY
       .attr('fill', 'white')
       .attr('stroke', 'black')
-      .attr('stroke-width', 2)
-      .attr('cx', (d) => Math.floor(d.x / cellSize) * cellSize + cellSize / 2 + offsetX)  // Add offsetX
-      .attr('cy', (d) => Math.floor(d.y / cellSize) * cellSize + cellSize / 2 + offsetY);  // Add offsetY
+      .attr('stroke-width', 2);
 
     // Add room numbers
     this.svg
@@ -830,7 +831,7 @@ export class DungeonRenderer {
       .attr('y', (d) => Math.floor(d.y / cellSize) * cellSize + cellSize / 2 + offsetY)  // Add offsetY
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
-      .attr('font-size', '12px')
+      .attr('font-size', '16px')
       .attr('font-weight', 'bold')
       .text((d) => d.id);
 
@@ -838,37 +839,94 @@ export class DungeonRenderer {
     nodes.append('title').text((d: RoomNode) => `${d.name} (${d.id})`);
   }
 
-  private renderNavigationGrid(
-    navigationData: NavigationGridData,
+  private calculateLinkEndpoint(
+    source: RoomNode,
+    target: RoomNode,
     offsetX: number,
     offsetY: number
   ) {
-    const { grid, cellSize } = navigationData;
+    // Calculate direction vector
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
 
-    // Create a group for the grid
-    const gridGroup = this.svg.append('g');
+    // Get the cell size
+    const cellSize = this.getCellSize();
 
-    // Render each cell
-    for (let y = 0; y < grid.length; y++) {
-      for (let x = 0; x < grid[y].length; x++) {
-        const cell = grid[y][x];
-        gridGroup
-          .append('rect')
-          .attr('x', x * cellSize + offsetX)  // Apply offsetX
-          .attr('y', y * cellSize + offsetY)  // Apply offsetY
-          .attr('width', cellSize)
-          .attr('height', cellSize)
-          .attr(
-            'fill',
-            cell.walkable ? 'rgba(0, 255, 0, 0.1)' : 'rgba(255, 0, 0, 0.1)'
-          )
-          .attr('stroke', 'rgba(0, 0, 0, 0.1)')
-          .attr('stroke-width', 1);
-      }
+    // Get grid positions
+    const sourceGridX = Math.floor(source.x / cellSize);
+    const sourceGridY = Math.floor(source.y / cellSize);
+
+    // Calculate center of the cell
+    const centerX = sourceGridX * cellSize + cellSize / 2;
+    const centerY = sourceGridY * cellSize + cellSize / 2;
+
+    // Determine exit point on the square (at the edge of the cell)
+    let exitX, exitY;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal dominant direction
+      exitX = sourceGridX * cellSize + (dx > 0 ? cellSize : 0);
+      exitY = centerY;
+    } else {
+      // Vertical dominant direction
+      exitX = centerX;
+      exitY = sourceGridY * cellSize + (dy > 0 ? cellSize : 0);
     }
 
-    // Return the group so it can be placed behind other elements
-    return gridGroup;
+    return {
+      x: exitX + offsetX,  // Add offsetX
+      y: exitY + offsetY   // Add offsetY
+    };
+  }
+
+  private renderLinks(
+    graph: DungeonGraph,
+    offsetX: number,
+    offsetY: number,
+    navigationData: NavigationGridData
+  ) {
+    const linkGroup = this.svg.append('g');
+
+    // Divide links by type
+    const primaryLinks = graph.links.filter((l) => l.type === 'door');
+    const secondaryLinks = this.renderSecondaryConnections
+      ? graph.links.filter((l) => l.type === 'secondary')
+      : [];
+
+    // Function to create path
+    const createPath = (d: RoomLink) => {
+      const start = this.calculateLinkEndpoint(d.source, d.target, offsetX, offsetY);
+      const end = this.calculateLinkEndpoint(d.target, d.source, offsetX, offsetY);
+
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+    };
+
+    // Render primary links
+    linkGroup
+      .selectAll<SVGPathElement, RoomLink>('path.primary')
+      .data(primaryLinks)
+      .enter()
+      .append('path')
+      .attr('class', 'primary')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 2)
+      .attr('fill', 'none')
+      .attr('d', createPath);
+
+    // Render secondary links
+    linkGroup
+      .selectAll<SVGPathElement, RoomLink>('path.secondary')
+      .data(secondaryLinks)
+      .enter()
+      .append('path')
+      .attr('class', 'secondary')
+      .attr('stroke', 'red')
+      .attr('stroke-width', 1)
+      .attr('fill', 'none')
+      .attr('stroke-dasharray', '4,4')
+      .attr('d', createPath);
+
+    return linkGroup;
   }
 
   private renderStep() {
@@ -885,68 +943,16 @@ export class DungeonRenderer {
       return;
     }
 
-    // Function to create path (reuse existing createPath logic)
+    // Function to create path
     const createPath = (d: RoomLink) => {
-      if (d.type === 'secondary') {
-        return this.calculateSecondaryPath(
-          d.source,
-          d.target,
-          this.navigationData!,
-          offsetX,
-          offsetY
-        );
-      }
+      const start = this.calculateLinkEndpoint(d.source, d.target, offsetX, offsetY);
+      const end = this.calculateLinkEndpoint(d.target, d.source, offsetX, offsetY);
 
-      const start = this.calculateEndpoint(
-        d.source,
-        d.target,
-        this.getNodeBounds(d.source),
-        d,
-        offsetX,
-        offsetY
-      );
-      const end = this.calculateEndpoint(
-        d.target,
-        d.source,
-        this.getNodeBounds(d.target),
-        d,
-        offsetX,
-        offsetY
-      );
-
-      const { grid, cellSize } = this.navigationData!;
-      const pathfinder = new AStarGrid(grid);
-      const sourceX = Math.floor(d.source.x / cellSize);
-      const sourceY = Math.floor(d.source.y / cellSize);
-      const targetX = Math.floor(d.target.x / cellSize);
-      const targetY = Math.floor(d.target.y / cellSize);
-
-      const path = pathfinder.findPath(
-        sourceX,
-        sourceY,
-        targetX,
-        targetY,
-        false
-      );
-
-      if (path.length === 0) {
-        return `M ${start.x + offsetX} ${start.y + offsetY} 
-                L ${end.x + offsetX} ${end.y + offsetY}`;
-      }
-
-      const pathCommands = [`M ${start.x + offsetX} ${start.y + offsetY}`];
-      path.slice(1, -1).forEach(([x, y]) => {
-        const px = x * cellSize + cellSize / 2 + offsetX;
-        const py = y * cellSize + cellSize / 2 + offsetY;
-        pathCommands.push(`L ${px} ${py}`);
-      });
-      pathCommands.push(`L ${end.x + offsetX} ${end.y + offsetY}`);
-
-      return pathCommands.join(' ');
+      return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
     };
 
     // Render the current link
-    const path = this.linkGroup
+    this.linkGroup
       .append('path')
       .attr('class', currentLink.type)
       .attr('stroke', currentLink.type === 'door' ? 'black' : 'red')
@@ -954,145 +960,6 @@ export class DungeonRenderer {
       .attr('fill', 'none')
       .attr('stroke-dasharray', currentLink.type === 'secondary' ? '4,4' : 'none')
       .attr('d', createPath(currentLink));
-
-    // Add connectors based on link type
-    if (currentLink.type === 'door') {
-      this.renderDoorConnectorsForLink(currentLink, offsetX, offsetY);
-    } else if (this.renderSecondaryConnections) {
-      this.renderSecondaryConnectorsForLink(currentLink, offsetX, offsetY);
-    }
-  }
-
-  private renderDoorConnectorsForLink(
-    link: RoomLink,
-    offsetX: number,
-    offsetY: number
-  ) {
-    if (!this.linkGroup) return;
-
-    // Source connector
-    const start = this.calculateEndpoint(
-      link.target,
-      link.source,
-      this.getNodeBounds(link.target),
-      link,
-      offsetX,
-      offsetY
-    );
-    this.linkGroup
-      .append('circle')
-      .attr('class', 'connector')
-      .attr('r', this.getConnectorBounds(link).width / 2)
-      .attr('fill', 'black')
-      .attr('stroke', 'black')
-      .attr('stroke-width', 1)
-      .attr('cx', start.x)
-      .attr('cy', start.y);
-
-    // Target connector
-    const end = this.calculateEndpoint(
-      link.source,
-      link.target,
-      this.getNodeBounds(link.source),
-      link,
-      offsetX,
-      offsetY
-    );
-    this.linkGroup
-      .append('circle')
-      .attr('class', 'connector-target')
-      .attr('r', this.getConnectorBounds(link).width / 2)
-      .attr('fill', 'black')
-      .attr('stroke', 'black')
-      .attr('stroke-width', 1)
-      .attr('cx', end.x)
-      .attr('cy', end.y);
-  }
-
-  private renderSecondaryConnectorsForLink(
-    link: RoomLink,
-    offsetX: number,
-    offsetY: number
-  ) {
-    if (!this.linkGroup) return;
-
-    const getPathEndpoint = (isSource: boolean) => {
-      const path = this.calculateSecondaryPath(
-        link.source,
-        link.target,
-        this.getNavigationData(),
-        0,
-        0
-      );
-      const commands = path
-        .split(/([MLZ])/)
-        .filter((cmd) => cmd.trim().length > 0);
-
-      if (isSource) {
-        const moveCmd = commands[1]
-          .trim()
-          .split(/[\s,]+/)
-          .map(Number);
-        const lineCmd = commands[3]
-          .trim()
-          .split(/[\s,]+/)
-          .map(Number);
-        return {
-          x: moveCmd[0],
-          y: moveCmd[1],
-          angle: Math.atan2(lineCmd[1] - moveCmd[1], lineCmd[0] - moveCmd[0]),
-        };
-      } else {
-        const lastCmd = commands[commands.length - 1]
-          .trim()
-          .split(/[\s,]+/)
-          .map(Number);
-        const prevCmd = commands[commands.length - 3]
-          .trim()
-          .split(/[\s,]+/)
-          .map(Number);
-        const angle = Math.atan2(
-          lastCmd[1] - prevCmd[1],
-          lastCmd[0] - prevCmd[0]
-        );
-
-        return {
-          x: lastCmd[0],
-          y: lastCmd[1],
-          angle: angle,
-        };
-      }
-    };
-
-    // Source connector
-    const sourceEndpoint = getPathEndpoint(true);
-    const bounds = this.getConnectorBounds(link);
-    this.linkGroup
-      .append('rect')
-      .attr('class', 'connector')
-      .attr('width', bounds.width)
-      .attr('height', bounds.height)
-      .attr('fill', 'red')
-      .attr('stroke', 'red')
-      .attr('stroke-width', 1)
-      .attr('transform', `translate(${sourceEndpoint.x + offsetX - bounds.width / 2
-        }, ${sourceEndpoint.y + offsetY - bounds.height / 2}) rotate(${(sourceEndpoint.angle * 180) / Math.PI
-        }, ${bounds.width / 2}, ${bounds.height / 2})`);
-
-    // Target connector
-    const targetEndpoint = getPathEndpoint(false);
-    this.linkGroup
-      .append('rect')
-      .attr('class', 'connector-target')
-      .attr('width', bounds.width)
-      .attr('height', bounds.height)
-      .attr('fill', 'red')
-      .attr('stroke', 'red')
-      .attr('stroke-width', 1)
-      .attr('transform', `translate(${targetEndpoint.x + offsetX - bounds.width / 2
-        }, ${targetEndpoint.y + offsetY - bounds.height / 2
-        }) rotate(${(targetEndpoint.angle * 180) / Math.PI
-        }, ${bounds.width / 2}, ${bounds.height / 2})`);
   }
 
   public initializeRender(graph: DungeonGraph, navigationData: NavigationGridData): void {
@@ -1102,10 +969,6 @@ export class DungeonRenderer {
     this.currentStep = -1;
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
-
-    // Render navigation grid
-    this.gridGroup = this.renderNavigationGrid(navigationData, offsetX, offsetY);
-    this.gridGroup.lower();
 
     // Render rooms
     this.renderRooms(graph, offsetX, offsetY);
@@ -1203,7 +1066,6 @@ export class SquareCellRenderer {
   private navigationData: NavigationGridData | null = null;
   private currentStep: number = -1;
   private linkGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
-  private gridGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private renderSecondaryConnections: boolean = false;
 
   constructor(svgElement: SVGSVGElement) {
@@ -1381,38 +1243,6 @@ export class SquareCellRenderer {
     return linkGroup;
   }
 
-  private renderNavigationGrid(
-    navigationData: NavigationGridData,
-    offsetX: number,
-    offsetY: number
-  ) {
-    const { grid, cellSize } = navigationData;
-
-    // Create a group for the grid
-    const gridGroup = this.svg.append('g');
-
-    // Render each cell
-    for (let y = 0; y < grid.length; y++) {
-      for (let x = 0; x < grid[y].length; x++) {
-        const cell = grid[y][x];
-        gridGroup
-          .append('rect')
-          .attr('x', x * cellSize + offsetX)  // Apply offsetX
-          .attr('y', y * cellSize + offsetY)  // Apply offsetY
-          .attr('width', cellSize)
-          .attr('height', cellSize)
-          .attr(
-            'fill',
-            cell.walkable ? 'rgba(0, 255, 0, 0.1)' : 'rgba(255, 0, 0, 0.1)'
-          )
-          .attr('stroke', 'rgba(0, 0, 0, 0.1)')
-          .attr('stroke-width', 1);
-      }
-    }
-
-    return gridGroup;
-  }
-
   private renderStep() {
     if (!this.graph || !this.navigationData || !this.linkGroup) return;
 
@@ -1453,10 +1283,6 @@ export class SquareCellRenderer {
     this.currentStep = -1;
 
     const { x: offsetX, y: offsetY } = this.calculateOffsets(graph);
-
-    // Render navigation grid
-    this.gridGroup = this.renderNavigationGrid(navigationData, offsetX, offsetY);
-    this.gridGroup.lower();
 
     // Render rooms
     this.renderRooms(graph, offsetX, offsetY);
