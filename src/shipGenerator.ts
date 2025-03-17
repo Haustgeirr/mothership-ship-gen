@@ -122,42 +122,44 @@ export class ShipGenerator {
                     ? roomsPerDeckArray[deck]
                     : Math.min(roomsPerDeck, this.shipWidth - 2); // Make sure rooms fit in width
 
-                // We'll place rooms around the spine position, with at least one room
-                // guaranteed to be at or adjacent to the spine
+                // First, determine a starting position that ensures:
+                // 1. At least one room will be at the spine (position 5)
+                // 2. All rooms fit within the grid (0-10)
+                // 3. Rooms can start at position 0 or end at position 10
 
-                // Calculate room placement to ensure we have a balanced distribution with the spine
-                let leftRooms = Math.floor((roomsThisDeck - 1) / 2);  // Rooms to the left of spine
-                let rightRooms = roomsThisDeck - 1 - leftRooms;       // Rooms to the right of spine
+                let finalStartX;
 
-                // Add some randomness - shift the balance sometimes
-                if (roomsThisDeck > 2 && Dice.d(100) > 50) {
-                    // Randomly shift the balance, making one side heavier than the other
-                    const maxShift = Math.min(leftRooms, rightRooms);
-                    const shift = maxShift > 0 ? Dice.d(maxShift) : 0;
+                // Create a range of possible starting positions
+                // The minimum starting position is 0
+                // The maximum starting position must ensure all rooms fit and at least one room is at the spine
+                const minStartX = 0;
+                const maxStartX = this.shipWidth - roomsThisDeck; // For 6 rooms, this is 5 (ensuring they fit in the grid)
 
-                    if (Dice.d(2) === 1) {
-                        // Shift to the left
-                        leftRooms += shift;
-                        rightRooms -= shift;
-                    } else {
-                        // Shift to the right
-                        leftRooms -= shift;
-                        rightRooms += shift;
-                    }
+                // Find the range of starting positions that would place a room at the spine
+                // For example, with 6 rooms, starting at position 0 would place rooms at 0,1,2,3,4,5
+                // Starting at position 5 would place rooms at 5,6,7,8,9,10
+                const minStartForSpine = Math.max(0, spineX - (roomsThisDeck - 1));
+                const maxStartForSpine = spineX;
+
+                // The actual range is the intersection of these two ranges
+                const actualMinStart = Math.max(minStartX, minStartForSpine);
+                const actualMaxStart = Math.min(maxStartX, maxStartForSpine);
+
+                // Randomly choose a starting position within this range
+                // This ensures we meet all our requirements while introducing randomness
+                if (actualMinStart === actualMaxStart) {
+                    // Only one possible starting position
+                    finalStartX = actualMinStart;
+                } else {
+                    // Calculate how many possible positions we have
+                    const possiblePositions = actualMaxStart - actualMinStart + 1;
+                    // Choose a random offset within the range
+                    const randomOffset = Dice.d(possiblePositions) - 1;
+                    finalStartX = actualMinStart + randomOffset;
                 }
 
-                // Start position is spine minus the number of rooms to the left
-                // Allow rooms to start at position 0 if needed
-                const startX = Math.max(0, spineX - leftRooms);
-                let endX = startX + roomsThisDeck - 1;
-
-                // Verify we're not going out of bounds
-                let finalStartX = startX;
-                if (endX >= this.shipWidth) {
-                    // If we are, adjust the startX to make sure all rooms fit
-                    finalStartX = Math.max(0, this.shipWidth - roomsThisDeck);
-                    endX = finalStartX + roomsThisDeck - 1;
-                }
+                // Calculate the ending position based on the starting position
+                const endX = finalStartX + roomsThisDeck - 1;
 
                 // Place rooms side by side on this deck
                 for (let i = 0; i < roomsThisDeck; i++) {
