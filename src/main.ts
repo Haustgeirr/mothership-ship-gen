@@ -16,38 +16,12 @@ const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
 const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
 const lastStepButton = document.querySelector<HTMLButtonElement>('#last-step');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
-// Add toggle for generator type
-const generatorToggle = document.createElement('div');
-generatorToggle.innerHTML = `
-  <label style="display: flex; align-items: center; margin-bottom: 10px;">
-    <input type="checkbox" id="ship-generator-toggle" checked>
-    <span style="margin-left: 8px;">Use Ship Generator</span>
-  </label>
-`;
-const controlsContainer = document.querySelector('.controls');
-if (controlsContainer) {
-  controlsContainer.insertBefore(generatorToggle, controlsContainer.firstChild);
-}
-const shipGeneratorToggle = document.querySelector<HTMLInputElement>('#ship-generator-toggle');
 
-// Add toggle for renderer type
-const rendererToggle = document.createElement('div');
-rendererToggle.innerHTML = `
-  <label style="display: flex; align-items: center; margin-bottom: 10px;">
-    <input type="checkbox" id="square-renderer-toggle">
-    <span style="margin-left: 8px;">Use Square Cell Renderer</span>
-  </label>
-`;
-if (controlsContainer) {
-  controlsContainer.insertBefore(rendererToggle, controlsContainer.firstChild);
-}
-const squareRendererToggle = document.querySelector<HTMLInputElement>('#square-renderer-toggle');
+const controlsContainer = document.querySelector('.controls');
 
 // Local storage keys
 const SEED_KEY = 'dungeon-seed';
 const PERSIST_SEED_KEY = 'persist-dungeon-seed';
-const GENERATOR_TYPE_KEY = 'generator-type';
-const RENDERER_TYPE_KEY = 'renderer-type';
 
 // Check if we should use a persisted seed
 const shouldPersistSeed = localStorage.getItem(PERSIST_SEED_KEY) === 'true';
@@ -63,22 +37,7 @@ if (shouldPersistSeed && localStorage.getItem(SEED_KEY)) {
   }
 } else {
   // Otherwise use the current timestamp
-  // Initialize PRNG, generator and renderer
-  // seed = 1738277232585;
-  // seed = 1742164405073;
   seed = Date.now();
-}
-
-// Get generator type from local storage or default to ship generator
-const useShipGenerator = localStorage.getItem(GENERATOR_TYPE_KEY) === 'ship' || true;
-if (shipGeneratorToggle) {
-  shipGeneratorToggle.checked = useShipGenerator;
-}
-
-// Get renderer type from local storage or default to circle renderer
-const useSquareRenderer = localStorage.getItem(RENDERER_TYPE_KEY) === 'square';
-if (squareRendererToggle) {
-  squareRendererToggle.checked = useSquareRenderer;
 }
 
 // Initialize the PRNG with the seed
@@ -87,14 +46,6 @@ new PRNG(seed);
 if (seedInput) {
   seedInput.value = seed.toString();
 }
-
-// Initialize PRNG, generator and renderer
-// const seed = 1738277232585;
-// const seed = 1738405946252;
-// const seed = 1738879648505; // TypeError: Cannot read properties of undefined (reading 'y')
-// const seed = 1738879581226; //  straight path solve
-// const seed = 1738879852013; //  straight path solve 2
-// const seed = 1738880047796; //  straight path solve 2
 
 // Set up event listeners for seed controls
 if (persistSeedCheckbox) {
@@ -411,11 +362,6 @@ function generateDungeon(seedValue: number) {
     localStorage.setItem(SEED_KEY, seedValue.toString());
   }
 
-  // Save generator preference
-  if (shipGeneratorToggle) {
-    localStorage.setItem(GENERATOR_TYPE_KEY, shipGeneratorToggle.checked ? 'ship' : 'dungeon');
-  }
-
   // Roll on each table and log the results
   console.log("=== Rolling on all outcome tables ===");
 
@@ -453,62 +399,25 @@ function generateDungeon(seedValue: number) {
   let dungeon;
   let navigationData;
 
-  // Use the appropriate generator based on the toggle
-  if (shipGeneratorToggle && shipGeneratorToggle.checked) {
-    // Ship Generator
-    // Use the existing shipType from line 391 instead of selecting a new random one
-    console.log(`Using existing ship type: ${shipType.name} with ${shipType.decks} decks`);
+  // Always use the Ship Generator
+  console.log(`Using ship type: ${shipType.name} with ${shipType.decks} decks`);
 
-    // Generate the ship layout using our new generator
-    dungeon = shipGenerator.generateShipFromType(shipType);
+  // Generate the ship layout
+  dungeon = shipGenerator.generateShipFromType(shipType);
 
-    if (shipGenerator.validateDungeon(dungeon)) {
-      console.log('Generated valid ship layout with:', {
-        rooms: dungeon.rooms.length,
-        links: dungeon.links.length,
-        shipType: shipType.name,
-        decks: shipType.decks,
-      });
-      navigationData = shipGenerator.createNavigationGrid();
-    } else {
-      console.error('Generated ship layout is not fully connected');
-      navigationData = shipGenerator.createNavigationGrid();
-      renderer.renderDebug(dungeon, navigationData);
-      return;
-    }
+  if (shipGenerator.validateDungeon(dungeon)) {
+    console.log('Generated valid ship layout with:', {
+      rooms: dungeon.rooms.length,
+      links: dungeon.links.length,
+      shipType: shipType.name,
+      decks: shipType.decks,
+    });
+    navigationData = shipGenerator.createNavigationGrid();
   } else {
-    // Dungeon Generator
-    // Generate dungeon configuration using dice rolls
-    const numRooms = Dice.roll(6, 4).total; // 4d6 rooms
-
-    const config: GenerationConfig = {
-      numRooms,
-      dungeonWidth: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
-      dungeonHeight: numRooms * DUNGEON_CONSTANTS.CELL_SIZE,
-      branchingFactor: Dice.roll(100).total, // d100: higher means more linear
-      directionalBias: Dice.roll(100).total, // d100: higher means more likely to continue same direction
-      minSecondaryLinks: Dice.roll(2).total, // 1d2 minimum secondary connections
-      maxSecondaryLinks: Dice.roll(2).total + 2, // 1d2+2 maximum secondary connections
-      cellSize: DUNGEON_CONSTANTS.CELL_SIZE,
-    };
-
-    console.log('Generating dungeon with config:', config);
-
-    // Generate the dungeon
-    dungeon = dungeonGenerator.generate(config);
-
-    if (dungeonGenerator.validateDungeon(dungeon)) {
-      console.log('Generated valid dungeon with:', {
-        rooms: dungeon.rooms.length,
-        links: dungeon.links.length,
-      });
-      navigationData = dungeonGenerator.createNavigationGrid();
-    } else {
-      console.error('Generated dungeon is not fully connected');
-      navigationData = dungeonGenerator.createNavigationGrid();
-      renderer.renderDebug(dungeon, navigationData);
-      return;
-    }
+    console.error('Generated ship layout is not fully connected');
+    navigationData = shipGenerator.createNavigationGrid();
+    renderer.renderDebug(dungeon, navigationData);
+    return;
   }
 
   // Initialize the render but don't draw links yet
@@ -550,18 +459,8 @@ if (!svgElement) {
   throw new Error("SVG element with id 'dungeon-svg' not found");
 }
 
-// Create the appropriate renderer based on user selection
-const renderer = squareRendererToggle && squareRendererToggle.checked && svgElement
-  ? new SquareCellRenderer(svgElement)
-  : new DungeonRenderer(svgElement);
-
-// Add event listener for generator toggle
-if (shipGeneratorToggle) {
-  shipGeneratorToggle.addEventListener('change', () => {
-    const newSeed = parseInt(seedInput?.value || Date.now().toString(), 10);
-    generateDungeon(newSeed);
-  });
-}
+// Always use the SquareCellRenderer
+const renderer = new SquareCellRenderer(svgElement);
 
 // Update step display
 const updateStepDisplay = () => {
@@ -604,16 +503,5 @@ if (resetButton) {
       seedInput.value = newSeed.toString();
     }
     generateDungeon(newSeed);
-  });
-}
-
-// Save renderer preference when toggle changes
-if (squareRendererToggle) {
-  squareRendererToggle.addEventListener('change', () => {
-    localStorage.setItem(RENDERER_TYPE_KEY, squareRendererToggle.checked ? 'square' : 'circle');
-    // Regenerate with current seed to show the change
-    if (seedInput) {
-      generateDungeon(parseInt(seedInput.value, 10));
-    }
   });
 }

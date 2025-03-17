@@ -15,7 +15,7 @@ import { DUNGEON_CONSTANTS } from './constants';
  */
 export class ShipGenerator {
     private cellSize: number;
-    private shipWidth: number = 0;
+    private shipWidth: number = 11; // Fixed width of 11 cells
     private shipHeight: number = 0;
     private graph: DungeonGraph = { rooms: [], links: [] };
     private grid: boolean[][] = []; // true if cell is occupied
@@ -90,8 +90,8 @@ export class ShipGenerator {
             roomsPerDeckArray = [],
         } = config;
 
-        // Store ship dimensions
-        this.shipWidth = Math.ceil(dungeonWidth / this.cellSize);
+        // Store ship dimensions - height is still dynamic, width is fixed at 11
+        // this.shipWidth is now defined as a fixed 11 cells at class level
         this.shipHeight = Math.ceil(dungeonHeight / this.cellSize);
 
         // Initialize grid with all cells unoccupied
@@ -104,7 +104,7 @@ export class ShipGenerator {
             links: [],
         };
 
-        let roomId = 0;
+        let roomId = 1;
 
         // If we want a structured ship with multiple rooms per deck
         if (numDecks > 0 && (roomsPerDeck > 0 || roomsPerDeckArray.length > 0)) {
@@ -147,14 +147,15 @@ export class ShipGenerator {
                 }
 
                 // Start position is spine minus the number of rooms to the left
-                const startX = Math.max(1, spineX - leftRooms);
+                // Allow rooms to start at position 0 if needed
+                const startX = Math.max(0, spineX - leftRooms);
                 let endX = startX + roomsThisDeck - 1;
 
                 // Verify we're not going out of bounds
                 let finalStartX = startX;
                 if (endX >= this.shipWidth) {
                     // If we are, adjust the startX to make sure all rooms fit
-                    finalStartX = Math.max(1, this.shipWidth - roomsThisDeck);
+                    finalStartX = Math.max(0, this.shipWidth - roomsThisDeck);
                     endX = finalStartX + roomsThisDeck - 1;
                 }
 
@@ -385,17 +386,13 @@ export class ShipGenerator {
 
         console.log(`Generating ship with ${numDecks} decks, ${roomCountDescription} (${totalRooms} total rooms)`);
 
-        // Determine ship width - should be wider than tall
-        // Find maximum rooms in any deck to determine width
-        const maxRoomsInAnyDeck = roomsPerDeckArray.length > 0
-            ? Math.max(...roomsPerDeckArray, config.roomsPerDeck || defaultRoomsPerDeck)
-            : (config.roomsPerDeck || defaultRoomsPerDeck);
-
-        const baseWidth = Math.max(3, maxRoomsInAnyDeck + 2); // Just enough width plus buffer
+        // Since ship width is now fixed at 11 cells, we use that value directly
+        // to calculate dungeonWidth based on the cell size
+        const dungeonWidth = this.shipWidth * this.cellSize;
 
         const completeConfig: GenerationConfig = {
             numRooms: totalRooms,
-            dungeonWidth: baseWidth * this.cellSize,
+            dungeonWidth: dungeonWidth,
             dungeonHeight: numDecks * this.cellSize, // Height based on number of decks
             numDecks,
             roomsPerDeck: config.roomsPerDeck || defaultRoomsPerDeck,
