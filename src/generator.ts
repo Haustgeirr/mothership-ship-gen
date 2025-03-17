@@ -1,12 +1,8 @@
 
 // v1.0
 // TODO: add room types, names, purpose and descriptions
-// TODO: remove renderer options
-// TODO: remove ship generator options
 // TODO: limit number of rooms per deck
-// TODO: start numbering rooms from 1
 // FIX: vertical overflow issue on high deck ships
-// FIX: d6 rooms dont seem to be able to shift their alignment far enough
 // TODO: add the ship description and remove the debug text
 // TODO: shrink the canvas size to fit the dungeon
 

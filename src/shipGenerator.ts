@@ -366,9 +366,9 @@ export class ShipGenerator {
         // If varied rooms per deck is enabled and not specified in config
         if (!config.roomsPerDeckArray) {
             for (let i = 0; i < numDecks; i++) {
-                // Generate a random number of rooms for this deck (1-6 now instead of 1-3)
+                // Generate a weighted random number of rooms for this deck
                 const roomsForThisDeck = shouldRandomize
-                    ? Dice.d(6) // Random 1-6 rooms per deck
+                    ? this.getWeightedRoomCount() // Weighted probability (1 is most likely, 6 is least likely)
                     : (config.roomsPerDeck || defaultRoomsPerDeck);
 
                 roomsPerDeckArray.push(roomsForThisDeck);
@@ -383,7 +383,7 @@ export class ShipGenerator {
         }
 
         const roomCountDescription = shouldRandomize
-            ? `random (1-6) ${roomsPerDeckArray.join(', ')} rooms per deck`
+            ? `weighted (1-6) ${roomsPerDeckArray.join(', ')} rooms per deck`
             : `${config.roomsPerDeck || defaultRoomsPerDeck} room(s) per deck`;
 
         console.log(`Generating ship with ${numDecks} decks, ${roomCountDescription} (${totalRooms} total rooms)`);
@@ -406,5 +406,29 @@ export class ShipGenerator {
         };
 
         return this.generate(completeConfig);
+    }
+
+    /**
+     * Returns a weighted random room count where:
+     * - 1 room is most likely (6/21 probability, ~28.6%)
+     * - 2 rooms is next most likely (5/21 probability, ~23.8%)
+     * - 3 rooms is next (4/21 probability, ~19.0%)
+     * - 4 rooms is next (3/21 probability, ~14.3%)
+     * - 5 rooms is next (2/21 probability, ~9.5%)
+     * - 6 rooms is least likely (1/21 probability, ~4.8%)
+     * 
+     * Uses an n/21 weighted probability distribution
+     */
+    private getWeightedRoomCount(): number {
+        // Roll a d21 (21-sided die)
+        const roll = Dice.d(21);
+
+        // Map the d21 roll to our weighted room counts:
+        if (roll <= 6) return 1;       // 6/21 probability (~28.6%)
+        if (roll <= 11) return 2;      // 5/21 probability (~23.8%)
+        if (roll <= 15) return 3;      // 4/21 probability (~19.0%)
+        if (roll <= 18) return 4;      // 3/21 probability (~14.3%)
+        if (roll <= 20) return 5;      // 2/21 probability (~9.5%)
+        return 6;                      // 1/21 probability (~4.8%)
     }
 } 
