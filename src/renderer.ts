@@ -209,10 +209,19 @@ export class DungeonRenderer {
     source: RoomNode,
     target: RoomNode,
     bounds: NodeBounds,
-    link?: RoomLink
+    link?: RoomLink,
+    offsetX: number = 0,
+    offsetY: number = 0
   ) {
     const dx = target.x - source.x;
     const dy = target.y - source.y;
+
+    // Get grid positions for consistent alignment
+    const cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
+    const sourceGridX = Math.floor(source.x / cellSize);
+    const sourceGridY = Math.floor(source.y / cellSize);
+    const sourceCenterX = sourceGridX * cellSize + cellSize / 2;
+    const sourceCenterY = sourceGridY * cellSize + cellSize / 2;
 
     // For non-secondary connections, keep existing cardinal direction logic
     if (!link || link.type !== 'secondary') {
@@ -233,13 +242,13 @@ export class DungeonRenderer {
       }
 
       return {
-        x: source.x + Math.cos(angle) * intersectDistance,
-        y: source.y + Math.sin(angle) * intersectDistance,
+        x: sourceCenterX + Math.cos(angle) * intersectDistance + offsetX,
+        y: sourceCenterY + Math.sin(angle) * intersectDistance + offsetY,
       };
     }
 
     // For secondary connections, determine direction based on the first/last grid cell in path
-    const { grid, cellSize } = this.getNavigationData();
+    const { grid } = this.getNavigationData();
     const sourceX = Math.floor(source.x / cellSize);
     const sourceY = Math.floor(source.y / cellSize);
     const targetX = Math.floor(target.x / cellSize);
@@ -296,8 +305,8 @@ export class DungeonRenderer {
 
     const intersectDistance = bounds.width / 2;
     return {
-      x: source.x + Math.cos(angle) * intersectDistance,
-      y: source.y + Math.sin(angle) * intersectDistance,
+      x: source.x + Math.cos(angle) * intersectDistance + offsetX,
+      y: source.y + Math.sin(angle) * intersectDistance + offsetY,
     };
   }
 
@@ -317,18 +326,31 @@ export class DungeonRenderer {
   }
 
   private calculateOffsets(graph: DungeonGraph) {
-    const svgWidth = +this.svg.attr('width');
-    const svgHeight = +this.svg.attr('height');
-
-    const xExtent = d3.extent(graph.rooms, (d) => d.x) as [number, number];
+    // Get the extents of the rooms to determine height
     const yExtent = d3.extent(graph.rooms, (d) => d.y) as [number, number];
 
-    const dungeonWidth = xExtent[1] - xExtent[0];
-    const dungeonHeight = yExtent[1] - yExtent[0];
+    // The cell size from constants
+    const cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
 
+    // Add one cell margin on each side (left, right, top, bottom)
+    const margin = cellSize;
+
+    // Canvas width is exactly 11 cells + 2 cells for margins
+    const canvasWidth = 11 * cellSize + (margin * 2);
+
+    // Canvas height is based on the room positions plus margin cells
+    const numberOfRows = Math.ceil(yExtent[1] / cellSize) + 1;
+    const canvasHeight = numberOfRows * cellSize + (margin * 2);
+
+    // Set SVG dimensions
+    this.svg
+      .attr('width', canvasWidth)
+      .attr('height', canvasHeight);
+
+    // Position the grid starting at the margin position (cellSize, cellSize)
     return {
-      x: (svgWidth - dungeonWidth) / 2 - xExtent[0],
-      y: (svgHeight - dungeonHeight) / 2 - yExtent[0],
+      x: margin,
+      y: margin
     };
   }
 
@@ -352,9 +374,15 @@ export class DungeonRenderer {
     if (!sourcePoint || !targetPoint) {
       console.warn('No valid connection points found, using direct line');
       console.groupEnd();
+
+      // Get grid positions with offsets for fallback
+      const sourceX = Math.floor(source.x / cellSize) * cellSize + cellSize / 2 + offsetX;
+      const sourceY = Math.floor(source.y / cellSize) * cellSize + cellSize / 2 + offsetY;
+      const targetX = Math.floor(target.x / cellSize) * cellSize + cellSize / 2 + offsetX;
+      const targetY = Math.floor(target.y / cellSize) * cellSize + cellSize / 2 + offsetY;
+
       // Fallback to direct line if no path found
-      return `M ${source.x + offsetX} ${source.y + offsetY} 
-              L ${target.x + offsetX} ${target.y + offsetY}`;
+      return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
     }
 
     console.log(`Source connection point: (${sourcePoint.x}, ${sourcePoint.y}) [grid coordinates]`);
@@ -396,32 +424,42 @@ export class DungeonRenderer {
     }
     console.log(`Number of turns in path: ${turns}`);
 
-    // Convert grid coordinates to world coordinates
+    // Convert grid coordinates to world coordinates with proper offsets
     const worldPath = simplifiedPath.map(([x, y]) => ({
       x: x * cellSize + offsetX,
       y: y * cellSize + offsetY,
     }));
 
     // Calculate angles for start and end adjustments
+    const sourceGridX = Math.floor(source.x / cellSize);
+    const sourceGridY = Math.floor(source.y / cellSize);
+    const targetGridX = Math.floor(target.x / cellSize);
+    const targetGridY = Math.floor(target.y / cellSize);
+
+    const sourceCenterX = sourceGridX * cellSize + cellSize / 2 + offsetX;
+    const sourceCenterY = sourceGridY * cellSize + cellSize / 2 + offsetY;
+    const targetCenterX = targetGridX * cellSize + cellSize / 2 + offsetX;
+    const targetCenterY = targetGridY * cellSize + cellSize / 2 + offsetY;
+
     const startAngle = Math.atan2(
-      worldPath[0].y - source.y - offsetY,
-      worldPath[0].x - source.x - offsetX
+      worldPath[0].y - sourceCenterY,
+      worldPath[0].x - sourceCenterX
     );
     const endAngle = Math.atan2(
-      target.y + offsetY - worldPath[worldPath.length - 1].y,
-      target.x + offsetX - worldPath[worldPath.length - 1].x
+      targetCenterY - worldPath[worldPath.length - 1].y,
+      targetCenterX - worldPath[worldPath.length - 1].x
     );
 
-    // Adjust start and end points to room edges
+    // Adjust start and end points to room edges with proper offsets
     const sourceRadius = this.getNodeBounds(source).width / 2;
     const targetRadius = this.getNodeBounds(target).width / 2;
     const adjustedStart = {
-      x: source.x + Math.cos(startAngle) * sourceRadius + offsetX,
-      y: source.y + Math.sin(startAngle) * sourceRadius + offsetY,
+      x: sourceCenterX + Math.cos(startAngle) * sourceRadius,
+      y: sourceCenterY + Math.sin(startAngle) * sourceRadius,
     };
     const adjustedEnd = {
-      x: target.x - Math.cos(endAngle) * targetRadius + offsetX,
-      y: target.y - Math.sin(endAngle) * targetRadius + offsetY,
+      x: targetCenterX - Math.cos(endAngle) * targetRadius,
+      y: targetCenterY - Math.sin(endAngle) * targetRadius,
     };
 
     console.log(`Adjusted start point: (${adjustedStart.x.toFixed(2)}, ${adjustedStart.y.toFixed(2)}) [world coordinates]`);
@@ -505,13 +543,17 @@ export class DungeonRenderer {
         d.source,
         d.target,
         this.getNodeBounds(d.source),
-        d
+        d,
+        offsetX,
+        offsetY
       );
       const end = this.calculateEndpoint(
         d.target,
         d.source,
         this.getNodeBounds(d.target),
-        d
+        d,
+        offsetX,
+        offsetY
       );
 
       // Primary connection path code
@@ -530,22 +572,21 @@ export class DungeonRenderer {
       );
 
       if (path.length === 0) {
-        return `M ${start.x + offsetX} ${start.y + offsetY} 
-                L ${end.x + offsetX} ${end.y + offsetY}`;
+        return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
       }
 
-      // Start from the calculated start point
-      const pathCommands = [`M ${start.x + offsetX} ${start.y + offsetY}`];
+      // Start from the calculated start point (already includes offsets)
+      const pathCommands = [`M ${start.x} ${start.y}`];
 
-      // Add path points
+      // Add path points with proper offsets
       path.slice(1, -1).forEach(([x, y]) => {
         const px = x * cellSize + cellSize / 2 + offsetX;
         const py = y * cellSize + cellSize / 2 + offsetY;
         pathCommands.push(`L ${px} ${py}`);
       });
 
-      // End at the calculated end point
-      pathCommands.push(`L ${end.x + offsetX} ${end.y + offsetY}`);
+      // End at the calculated end point (already includes offsets)
+      pathCommands.push(`L ${end.x} ${end.y}`);
 
       return pathCommands.join(' ');
     };
@@ -600,18 +641,22 @@ export class DungeonRenderer {
           d.target,
           d.source,
           this.getNodeBounds(d.target),
-          d
+          d,
+          offsetX,
+          offsetY
         );
-        return start.x + offsetX;
+        return start.x;
       })
       .attr('cy', (d) => {
         const start = this.calculateEndpoint(
           d.target,
           d.source,
           this.getNodeBounds(d.target),
-          d
+          d,
+          offsetX,
+          offsetY
         );
-        return start.y + offsetY;
+        return start.y;
       });
 
     // Target side connectors
@@ -630,18 +675,22 @@ export class DungeonRenderer {
           d.source,
           d.target,
           this.getNodeBounds(d.source),
-          d
+          d,
+          offsetX,
+          offsetY
         );
-        return end.x + offsetX;
+        return end.x;
       })
       .attr('cy', (d) => {
         const end = this.calculateEndpoint(
           d.source,
           d.target,
           this.getNodeBounds(d.source),
-          d
+          d,
+          offsetX,
+          offsetY
         );
-        return end.y + offsetY;
+        return end.y;
       });
   }
 
@@ -754,6 +803,8 @@ export class DungeonRenderer {
     offsetX: number,
     offsetY: number
   ) {
+    const cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
+
     // Draw nodes with IDs for debugging
     const nodes = this.svg
       .append('g')
@@ -765,8 +816,8 @@ export class DungeonRenderer {
       .attr('fill', 'white')
       .attr('stroke', 'black')
       .attr('stroke-width', 2)
-      .attr('cx', (d) => d.x + offsetX)
-      .attr('cy', (d) => d.y + offsetY);
+      .attr('cx', (d) => Math.floor(d.x / cellSize) * cellSize + cellSize / 2 + offsetX)  // Add offsetX
+      .attr('cy', (d) => Math.floor(d.y / cellSize) * cellSize + cellSize / 2 + offsetY);  // Add offsetY
 
     // Add room numbers
     this.svg
@@ -775,8 +826,8 @@ export class DungeonRenderer {
       .data(graph.rooms)
       .enter()
       .append('text')
-      .attr('x', (d) => d.x + offsetX)
-      .attr('y', (d) => d.y + offsetY)
+      .attr('x', (d) => Math.floor(d.x / cellSize) * cellSize + cellSize / 2 + offsetX)  // Add offsetX
+      .attr('y', (d) => Math.floor(d.y / cellSize) * cellSize + cellSize / 2 + offsetY)  // Add offsetY
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('font-size', '12px')
@@ -803,8 +854,8 @@ export class DungeonRenderer {
         const cell = grid[y][x];
         gridGroup
           .append('rect')
-          .attr('x', x * cellSize + offsetX - cellSize / 2)
-          .attr('y', y * cellSize + offsetY - cellSize / 2)
+          .attr('x', x * cellSize + offsetX)  // Apply offsetX
+          .attr('y', y * cellSize + offsetY)  // Apply offsetY
           .attr('width', cellSize)
           .attr('height', cellSize)
           .attr(
@@ -850,13 +901,17 @@ export class DungeonRenderer {
         d.source,
         d.target,
         this.getNodeBounds(d.source),
-        d
+        d,
+        offsetX,
+        offsetY
       );
       const end = this.calculateEndpoint(
         d.target,
         d.source,
         this.getNodeBounds(d.target),
-        d
+        d,
+        offsetX,
+        offsetY
       );
 
       const { grid, cellSize } = this.navigationData!;
@@ -920,7 +975,9 @@ export class DungeonRenderer {
       link.target,
       link.source,
       this.getNodeBounds(link.target),
-      link
+      link,
+      offsetX,
+      offsetY
     );
     this.linkGroup
       .append('circle')
@@ -929,15 +986,17 @@ export class DungeonRenderer {
       .attr('fill', 'black')
       .attr('stroke', 'black')
       .attr('stroke-width', 1)
-      .attr('cx', start.x + offsetX)
-      .attr('cy', start.y + offsetY);
+      .attr('cx', start.x)
+      .attr('cy', start.y);
 
     // Target connector
     const end = this.calculateEndpoint(
       link.source,
       link.target,
       this.getNodeBounds(link.source),
-      link
+      link,
+      offsetX,
+      offsetY
     );
     this.linkGroup
       .append('circle')
@@ -946,8 +1005,8 @@ export class DungeonRenderer {
       .attr('fill', 'black')
       .attr('stroke', 'black')
       .attr('stroke-width', 1)
-      .attr('cx', end.x + offsetX)
-      .attr('cy', end.y + offsetY);
+      .attr('cx', end.x)
+      .attr('cy', end.y);
   }
 
   private renderSecondaryConnectorsForLink(
@@ -1163,18 +1222,31 @@ export class SquareCellRenderer {
   }
 
   private calculateOffsets(graph: DungeonGraph) {
-    const svgWidth = +this.svg.attr('width');
-    const svgHeight = +this.svg.attr('height');
-
-    const xExtent = d3.extent(graph.rooms, (d) => d.x) as [number, number];
+    // Get the extents of the rooms to determine height
     const yExtent = d3.extent(graph.rooms, (d) => d.y) as [number, number];
 
-    const dungeonWidth = xExtent[1] - xExtent[0];
-    const dungeonHeight = yExtent[1] - yExtent[0];
+    // The cell size from constants
+    const cellSize = this.getCellSize();
 
+    // Add one cell margin on each side (left, right, top, bottom)
+    const margin = cellSize;
+
+    // Canvas width is exactly 11 cells + 2 cells for margins
+    const canvasWidth = 11 * cellSize + (margin * 2);
+
+    // Canvas height is based on the room positions plus margin cells
+    const numberOfRows = Math.ceil(yExtent[1] / cellSize) + 1;
+    const canvasHeight = numberOfRows * cellSize + (margin * 2);
+
+    // Set SVG dimensions
+    this.svg
+      .attr('width', canvasWidth)
+      .attr('height', canvasHeight);
+
+    // Position the grid starting at the margin position (cellSize, cellSize)
     return {
-      x: (svgWidth - dungeonWidth) / 2 - xExtent[0],
-      y: (svgHeight - dungeonHeight) / 2 - yExtent[0],
+      x: margin,
+      y: margin
     };
   }
 
@@ -1185,7 +1257,7 @@ export class SquareCellRenderer {
   ) {
     const cellSize = this.getCellSize();
 
-    // Draw rooms as squares with borders that fill the entire cell
+    // Draw rooms as squares that fill cells
     const nodes = this.svg
       .append('g')
       .selectAll<SVGRectElement, RoomNode>('rect')
@@ -1194,21 +1266,21 @@ export class SquareCellRenderer {
       .append('rect')
       .attr('width', cellSize)
       .attr('height', cellSize)
-      .attr('x', (d) => d.x + offsetX - cellSize / 2) // Center the square
-      .attr('y', (d) => d.y + offsetY - cellSize / 2) // Center the square
+      .attr('x', (d) => Math.floor(d.x / cellSize) * cellSize + offsetX)  // Add offsetX
+      .attr('y', (d) => Math.floor(d.y / cellSize) * cellSize + offsetY)  // Add offsetY
       .attr('fill', 'white')
       .attr('stroke', 'black')
       .attr('stroke-width', 2);
 
-    // Add room numbers (keep the same as in DungeonRenderer)
+    // Add room numbers
     this.svg
       .append('g')
       .selectAll<SVGTextElement, RoomNode>('text')
       .data(graph.rooms)
       .enter()
       .append('text')
-      .attr('x', (d) => d.x + offsetX)
-      .attr('y', (d) => d.y + offsetY)
+      .attr('x', (d) => Math.floor(d.x / cellSize) * cellSize + cellSize / 2 + offsetX)  // Add offsetX
+      .attr('y', (d) => Math.floor(d.y / cellSize) * cellSize + cellSize / 2 + offsetY)  // Add offsetY
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('font-size', '16px')
@@ -1229,26 +1301,33 @@ export class SquareCellRenderer {
     const dx = target.x - source.x;
     const dy = target.y - source.y;
 
-    // Determine the dominant direction and snap to cardinal
+    // Get the cell size
     const cellSize = this.getCellSize();
-    const halfSize = cellSize / 2;
+
+    // Get grid positions
+    const sourceGridX = Math.floor(source.x / cellSize);
+    const sourceGridY = Math.floor(source.y / cellSize);
+
+    // Calculate center of the cell
+    const centerX = sourceGridX * cellSize + cellSize / 2;
+    const centerY = sourceGridY * cellSize + cellSize / 2;
 
     // Determine exit point on the square (at the edge of the cell)
     let exitX, exitY;
 
     if (Math.abs(dx) > Math.abs(dy)) {
       // Horizontal dominant direction
-      exitX = source.x + (dx > 0 ? halfSize : -halfSize);
-      exitY = source.y;
+      exitX = sourceGridX * cellSize + (dx > 0 ? cellSize : 0);
+      exitY = centerY;
     } else {
       // Vertical dominant direction
-      exitX = source.x;
-      exitY = source.y + (dy > 0 ? halfSize : -halfSize);
+      exitX = centerX;
+      exitY = sourceGridY * cellSize + (dy > 0 ? cellSize : 0);
     }
 
     return {
-      x: exitX + offsetX,
-      y: exitY + offsetY
+      x: exitX + offsetX,  // Add offsetX
+      y: exitY + offsetY   // Add offsetY
     };
   }
 
@@ -1318,8 +1397,8 @@ export class SquareCellRenderer {
         const cell = grid[y][x];
         gridGroup
           .append('rect')
-          .attr('x', x * cellSize + offsetX - cellSize / 2)
-          .attr('y', y * cellSize + offsetY - cellSize / 2)
+          .attr('x', x * cellSize + offsetX)  // Apply offsetX
+          .attr('y', y * cellSize + offsetY)  // Apply offsetY
           .attr('width', cellSize)
           .attr('height', cellSize)
           .attr(
