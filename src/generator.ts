@@ -1,6 +1,5 @@
 // v1.0
 // TODO: add room types, names, purpose and descriptions
-// TODO: add the ship description
 
 // v1.1
 // TODO: think about combining rooms into a large cell, maybe 2x2 or 3x3
@@ -10,6 +9,7 @@
 // TODO: define crew, for active ships
 // TODO: roll up a ship sheet as well, use rolls for hardpoints and weapon placement
 // TODO: consider rules for boarding action
+// TODO: decouple the ship gen from the ship type
 
 import type {
   DungeonGraph,

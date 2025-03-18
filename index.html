@@ -18,8 +18,67 @@
 </head>
 
 <body class="max-w-6xl mx-auto p-5 font-sans">
-  <h1 class="text-center text-gray-800 text-2xl font-bold mb-6">MRPG Ship Generator</h1>
-  <svg id="dungeon-svg" width="800" height="600" class="block mx-auto"></svg>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Left Column: Ship Map -->
+    <div>
+      <svg id="dungeon-svg" width="100%" height="600" class="block mx-auto"></svg>
+    </div>
+
+    <!-- Right Column: Ship Details -->
+    <div>
+      <div id="ship-details">
+        <div class="ship-name text-xl font-bold mb-2"></div>
+
+        <div class="space-y-2">
+          <div>
+            <span class="font-semibold">Ship Type:</span>
+            <span id="ship-type" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Ship Status:</span>
+            <span id="ship-status" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Survivors:</span>
+            <span id="survivors" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Ship Systems:</span>
+            <span id="ship-systems" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Salvage:</span>
+            <span id="salvage" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Cargo:</span>
+            <span id="cargo" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Cause of Ruin:</span>
+            <span id="cause-of-ruin" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Weird Feature:</span>
+            <span id="weird-feature" class="ml-2"></span>
+          </div>
+
+          <div>
+            <span class="font-semibold">Random Cargo:</span>
+            <span id="random-cargo" class="ml-2"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="./src/main.ts"></script>
 </body>
 

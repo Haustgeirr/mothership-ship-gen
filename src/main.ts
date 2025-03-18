@@ -1,11 +1,9 @@
 import './styles.css';
 import { DungeonGenerator } from './generator';
 import { ShipGenerator } from './shipGenerator';
-import { DungeonRenderer, SquareCellRenderer } from './renderer';
-import type { GenerationConfig } from './types';
+import { SquareCellRenderer } from './renderer';
 import { PRNG } from './prng';
 import { Dice } from './dice';
-import { DUNGEON_CONSTANTS } from './constants';
 
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
@@ -16,6 +14,18 @@ const nextButton = document.querySelector<HTMLButtonElement>('#next-step');
 const prevButton = document.querySelector<HTMLButtonElement>('#prev-step');
 const lastStepButton = document.querySelector<HTMLButtonElement>('#last-step');
 const resetButton = document.querySelector<HTMLButtonElement>('#reset');
+
+// Ship detail elements
+const shipNameElement = document.querySelector<HTMLElement>('.ship-name');
+const shipTypeElement = document.querySelector<HTMLElement>('#ship-type');
+const shipStatusElement = document.querySelector<HTMLElement>('#ship-status');
+const survivorsElement = document.querySelector<HTMLElement>('#survivors');
+const shipSystemsElement = document.querySelector<HTMLElement>('#ship-systems');
+const salvageElement = document.querySelector<HTMLElement>('#salvage');
+const cargoElement = document.querySelector<HTMLElement>('#cargo');
+const causeOfRuinElement = document.querySelector<HTMLElement>('#cause-of-ruin');
+const weirdFeatureElement = document.querySelector<HTMLElement>('#weird-feature');
+const randomCargoElement = document.querySelector<HTMLElement>('#random-cargo');
 
 const controlsContainer = document.querySelector('.controls');
 
@@ -304,7 +314,7 @@ const randomCargoTable = Dice.createOutcomeTable(
 );
 
 const namePartATable = Dice.createOutcomeTable(
-  100,
+  10,
   1,
   {
     0: "IAGO",
@@ -321,7 +331,7 @@ const namePartATable = Dice.createOutcomeTable(
 );
 
 const namePartBTable = Dice.createOutcomeTable(
-  100,
+  10,
   1,
   {
     0: "VALEFOR",
@@ -338,7 +348,7 @@ const namePartBTable = Dice.createOutcomeTable(
 );
 
 const namePartCTable = Dice.createOutcomeTable(
-  100,
+  10,
   1,
   {
     0: "ECHO",
@@ -362,59 +372,71 @@ function generateDungeon(seedValue: number) {
     localStorage.setItem(SEED_KEY, seedValue.toString());
   }
 
-  // Roll on each table and log the results
-  console.log("=== Rolling on all outcome tables ===");
+  // Generate ship name
+  const namePartA = Dice.rollWithOutcome(namePartATable);
+  const namePartB = Dice.rollWithOutcome(namePartBTable);
+  const namePartC = Dice.rollWithOutcome(namePartCTable);
+  const shipName = `${namePartA} ${namePartB} ${namePartC}`;
 
-  console.log(`${Dice.rollWithOutcome(namePartATable)} ${Dice.rollWithOutcome(namePartBTable)} ${Dice.rollWithOutcome(namePartCTable)}`);
+  // Update ship name in the UI
+  if (shipNameElement) {
+    shipNameElement.textContent = shipName;
+  }
 
   const shipType = Dice.rollWithOutcome(shipTypeTable);
-  console.log(`Ship Type: ${shipType.name} decks: ${shipType.decks}`);
+  if (shipTypeElement) {
+    shipTypeElement.textContent = `${shipType.name}`;
+  }
 
   const shipStatus = Dice.rollWithOutcome(shipStatusTable);
-  console.log(`Ship Status: ${shipStatus}`);
+  if (shipStatusElement) {
+    shipStatusElement.textContent = shipStatus;
+  }
 
   const survivors = Dice.rollWithOutcome(survivorsTable);
-  console.log(`Survivors: ${survivors}`);
+  if (survivorsElement) {
+    survivorsElement.textContent = survivors;
+  }
 
   const shipSystems = Dice.rollWithOutcome(shipSystemsTable);
-  console.log(`Ship Systems: ${shipSystems}`);
+  if (shipSystemsElement) {
+    shipSystemsElement.textContent = shipSystems;
+  }
 
   const salvage = Dice.rollWithOutcome(salvageTable);
-  console.log(`Salvage: ${salvage}`);
+  if (salvageElement) {
+    salvageElement.textContent = salvage;
+  }
 
   const cargo = Dice.rollWithOutcome(cargoTable);
-  console.log(`Cargo: ${cargo}`);
+  if (cargoElement) {
+    cargoElement.textContent = cargo;
+  }
 
   const causeOfRuin = Dice.rollWithOutcome(causeOfRuinTable);
-  console.log(`Cause of Ruin: ${causeOfRuin}`);
+  if (causeOfRuinElement) {
+    causeOfRuinElement.textContent = causeOfRuin;
+  }
 
   const weird = Dice.rollWithOutcome(weirdTable);
-  console.log(`Weird Feature: ${weird}`);
+  if (weirdFeatureElement) {
+    weirdFeatureElement.textContent = weird;
+  }
 
   const randomCargo = Dice.rollWithOutcome(randomCargoTable);
-  console.log(`Random Cargo: ${randomCargo}`);
-
-  console.log("=== End of rolls ===");
+  if (randomCargoElement) {
+    randomCargoElement.textContent = randomCargo;
+  }
 
   let dungeon;
   let navigationData;
-
-  // Always use the Ship Generator
-  console.log(`Using ship type: ${shipType.name} with ${shipType.decks} decks`);
 
   // Generate the ship layout
   dungeon = shipGenerator.generateShipFromType(shipType);
 
   if (shipGenerator.validateDungeon(dungeon)) {
-    console.log('Generated valid ship layout with:', {
-      rooms: dungeon.rooms.length,
-      links: dungeon.links.length,
-      shipType: shipType.name,
-      decks: shipType.decks,
-    });
     navigationData = shipGenerator.createNavigationGrid();
   } else {
-    console.error('Generated ship layout is not fully connected');
     navigationData = shipGenerator.createNavigationGrid();
     renderer.renderDebug(dungeon, navigationData);
     return;
