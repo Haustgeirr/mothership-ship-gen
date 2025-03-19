@@ -3,10 +3,12 @@ import type {
     RoomNode,
     RoomLink,
     GenerationConfig,
+    RoomType
 } from './types';
 import { Dice } from './dice';
 import type { GridCell } from './AStarGrid';
 import { DUNGEON_CONSTANTS } from './constants';
+import { RoomAssigner } from './roomAssignment';
 
 /**
  * ShipGenerator - Creates ship layouts with rooms in a grid pattern
@@ -19,6 +21,8 @@ export class ShipGenerator {
     private shipHeight: number = 0;
     private graph: DungeonGraph = { rooms: [], links: [] };
     private grid: boolean[][] = []; // true if cell is occupied
+    private shipTypeName: string = "Default"; // Store the ship type name for room type assignment
+    private roomTypes: RoomType[] = []; // Store assigned room types
 
     constructor() {
         this.cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
@@ -27,12 +31,19 @@ export class ShipGenerator {
     /**
      * Creates a room at the specified grid coordinates
      */
-    private createRoom(id: number, x: number, y: number): RoomNode {
+    private createRoom(id: number, x: number, y: number, type?: RoomType): RoomNode {
+        // Use the provided room type or get the next one from the roomTypes array
+        const roomType = type || (this.roomTypes.length > id - 1 ? this.roomTypes[id - 1] : undefined);
+
+        // Generate a name based on room type if available
+        const roomName = roomType ? `${roomType} ${id}` : `Room ${id}`;
+
         return {
             id: id,
             x: x * this.cellSize,
             y: y * this.cellSize,
-            name: `Room ${id}`,
+            name: roomName,
+            type: roomType,
         };
     }
 
@@ -88,7 +99,14 @@ export class ShipGenerator {
             numDecks = 1,
             roomsPerDeck = 0,
             roomsPerDeckArray = [],
+            shipTypeName = this.shipTypeName, // Use the ship type name from config or instance
         } = config;
+
+        // Store the ship type name for room type assignment
+        this.shipTypeName = shipTypeName;
+
+        // Pre-generate room types based on the ship type
+        this.roomTypes = RoomAssigner.assignRoomTypesForShip(this.shipTypeName, numRooms);
 
         // Store ship dimensions - height is still dynamic, width is fixed at 11
         // this.shipWidth is now defined as a fixed 11 cells at class level
@@ -402,6 +420,7 @@ export class ShipGenerator {
             randomizeRoomsPerDeck: shouldRandomize,
             minSecondaryLinks: 1,
             maxSecondaryLinks: Math.ceil(totalRooms * 0.3),
+            shipTypeName: shipType.name, // Pass the ship type name to generate
             ...config
         };
 
