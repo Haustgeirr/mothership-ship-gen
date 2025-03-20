@@ -4,6 +4,7 @@ import { ShipGenerator } from './shipGenerator';
 import { SquareCellRenderer } from './renderer';
 import { PRNG } from './prng';
 import { Dice } from './dice';
+import { DUNGEON_CONSTANTS } from './constants';
 
 
 const svgElement = document.querySelector<SVGSVGElement>('#dungeon-svg');
@@ -366,7 +367,11 @@ const namePartCTable = Dice.createOutcomeTable(
 
 
 // Function to generate a dungeon with a specific seed
-function generateDungeon(seedValue: number) {
+async function generateDungeon(seedValue: number) {
+  console.log("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  console.log("### MAIN.TS: STARTING DUNGEON GENERATION WITH SEED " + seedValue + " ###");
+  console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+
   // Store the seed if persistence is enabled
   if (persistSeedCheckbox && persistSeedCheckbox.checked) {
     localStorage.setItem(SEED_KEY, seedValue.toString());
@@ -432,24 +437,99 @@ function generateDungeon(seedValue: number) {
   let navigationData;
 
   // Generate the ship layout
+  console.log(`\n!!!!!!! MAIN.TS: STARTING SHIP GENERATION FOR ${shipType.name} !!!!!!!!!`);
+  console.log(`!!!!!!! SHIP TYPE: ${shipType.name}, DECKS: ${shipType.decks} !!!!!!!!!`);
   dungeon = shipGenerator.generateShipFromType(shipType);
+  console.log(`!!!!!!! MAIN.TS: SHIP GENERATED WITH ${dungeon.rooms.length} ROOMS AND ${dungeon.links.length} LINKS !!!!!!!!!`);
+
+  // Now let's explicitly try our RoomGenerator to see if it works
+  console.log(`\n!!!!!!! MAIN.TS: TESTING ROOM GENERATOR !!!!!!!!!`);
+  try {
+    // Use our existing RoomGenerator class that's already imported
+    const roomGenerator = new (await import('./roomGenerator')).RoomGenerator();
+    console.log(`!!!!!!! CREATED ROOM GENERATOR INSTANCE !!!!!!!!!`);
+    const enhancedShip = roomGenerator.applyRoomTypes(dungeon, shipType.name);
+    console.log(`!!!!!!! APPLIED ROOM TYPES SUCCESSFULLY !!!!!!!!!`);
+    // We don't actually use the enhanced ship, this is just for logging
+    console.log(`!!!!!!! ENHANCED SHIP HAS ${enhancedShip.rooms.length} ROOMS WITH TYPES ASSIGNED !!!!!!!!!`);
+  } catch (error) {
+    console.error(`!!!!!!! ERROR TESTING ROOM GENERATOR !!!!!!!!!`, error);
+  }
 
   if (shipGenerator.validateDungeon(dungeon)) {
+    console.log(`!!!!!!! DUNGEON VALIDATION SUCCESSFUL !!!!!!!!!`);
     navigationData = shipGenerator.createNavigationGrid();
   } else {
+    console.log(`!!!!!!! DUNGEON VALIDATION FAILED !!!!!!!!!`);
     navigationData = shipGenerator.createNavigationGrid();
     renderer.renderDebug(dungeon, navigationData);
     return;
   }
 
   // Initialize the render but don't draw links yet
+  console.log(`!!!!!!! INITIALIZING RENDERER !!!!!!!!!`);
   renderer.initializeRender(dungeon, navigationData);
 
   // Immediately advance to the last step
   while (renderer.nextStep()) { }
+  console.log(`!!!!!!! RENDERING COMPLETE !!!!!!!!!`);
+
+  // Display room assignments in the UI
+  const roomAssignmentsElement = document.querySelector<HTMLElement>('#room-assignments');
+  if (roomAssignmentsElement) {
+    // Clear previous assignments
+    roomAssignmentsElement.innerHTML = '';
+
+    // Sort rooms by deck and then by position
+    const sortedRooms = [...dungeon.rooms].sort((a, b) => {
+      const deckA = Math.floor(a.y / DUNGEON_CONSTANTS.CELL_SIZE);
+      const deckB = Math.floor(b.y / DUNGEON_CONSTANTS.CELL_SIZE);
+
+      // First sort by deck
+      if (deckA !== deckB) return deckA - deckB;
+
+      // Then by position within deck
+      return Math.floor(a.x / DUNGEON_CONSTANTS.CELL_SIZE) - Math.floor(b.x / DUNGEON_CONSTANTS.CELL_SIZE);
+    });
+
+    // Display each room with its ID, type, and position
+    sortedRooms.forEach(room => {
+      const roomElement = document.createElement('div');
+      const x = Math.floor(room.x / DUNGEON_CONSTANTS.CELL_SIZE);
+      const y = Math.floor(room.y / DUNGEON_CONSTANTS.CELL_SIZE);
+
+      roomElement.innerHTML = `
+        <span class="font-medium">Room ${room.id}:</span> 
+        <span class="${room.type ? 'text-green-600' : 'text-red-500'}">${room.type || 'No type assigned'}</span> 
+        <span class="text-gray-500 ml-1">(Deck ${y + 1}, Position ${x})</span>
+      `;
+
+      roomAssignmentsElement.appendChild(roomElement);
+    });
+
+    // Add summary information
+    const summaryElement = document.createElement('div');
+    summaryElement.classList.add('mt-2', 'pt-2', 'border-t', 'border-gray-200');
+
+    const assignedCount = dungeon.rooms.filter(room => room.type).length;
+    const totalCount = dungeon.rooms.length;
+
+    summaryElement.innerHTML = `
+      <span class="font-medium">Summary:</span> 
+      <span class="${assignedCount === totalCount ? 'text-green-600' : 'text-amber-500'}">
+        ${assignedCount} of ${totalCount} rooms have types assigned
+      </span>
+    `;
+
+    roomAssignmentsElement.appendChild(summaryElement);
+  }
 
   // Update step display
   updateStepDisplay();
+
+  console.log("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  console.log("### MAIN.TS: DUNGEON GENERATION COMPLETE ###");
+  console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 }
 
 // Set up seed input event listener
@@ -459,7 +539,9 @@ if (seedInput) {
     if (event.key === 'Enter') {
       const newSeed = parseInt(seedInput.value, 10);
       if (!isNaN(newSeed)) {
-        generateDungeon(newSeed);
+        generateDungeon(newSeed).catch(error => {
+          console.error("Error generating dungeon:", error);
+        });
       }
     }
   });
@@ -468,7 +550,9 @@ if (seedInput) {
   seedInput.addEventListener('blur', () => {
     const newSeed = parseInt(seedInput.value, 10);
     if (!isNaN(newSeed)) {
-      generateDungeon(newSeed);
+      generateDungeon(newSeed).catch(error => {
+        console.error("Error generating dungeon:", error);
+      });
     }
   });
 }
@@ -492,7 +576,9 @@ const updateStepDisplay = () => {
 };
 
 // Generate the initial dungeon
-generateDungeon(seed);
+generateDungeon(seed).catch(error => {
+  console.error("Error generating initial dungeon:", error);
+});
 
 // Add button event listeners
 if (nextButton) {

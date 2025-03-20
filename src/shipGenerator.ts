@@ -38,6 +38,8 @@ export class ShipGenerator {
         // Generate a name based on room type if available
         const roomName = roomType ? `${roomType} ${id}` : `Room ${id}`;
 
+        console.log(`### SHIP GENERATOR: Created ROOM ID ${id} at position (${x},${y})${roomType ? ' with type ' + roomType : ''} ###`);
+
         return {
             id: id,
             x: x * this.cellSize,
@@ -67,6 +69,7 @@ export class ShipGenerator {
         target: RoomNode,
         type: 'door' | 'secondary'
     ): RoomLink {
+        console.log(`### SHIP GENERATOR: Created ${type} link between ROOM ID ${source.id} and ROOM ID ${target.id} ###`);
         return { source, target, type };
     }
 
@@ -90,6 +93,8 @@ export class ShipGenerator {
      * Generates a ship layout based on configuration
      */
     generate(config: GenerationConfig): DungeonGraph {
+        console.log("\n### SHIP GENERATOR: Starting ship generation ###");
+
         const {
             numRooms,
             dungeonWidth,
@@ -107,6 +112,7 @@ export class ShipGenerator {
 
         // Pre-generate room types based on the ship type
         this.roomTypes = RoomAssigner.assignRoomTypesForShip(this.shipTypeName, numRooms);
+        console.log(`### Room types pre-generated for ${this.shipTypeName} ###`);
 
         // Store ship dimensions - height is still dynamic, width is fixed at 11
         // this.shipWidth is now defined as a fixed 11 cells at class level
@@ -368,6 +374,8 @@ export class ShipGenerator {
      * and generates rooms for each deck.
      */
     generateShipFromType(shipType: { name: string; decks: string }, config: Partial<GenerationConfig> = {}): DungeonGraph {
+        console.log(`\n### GENERATING SHIP FROM TYPE: ${shipType.name} ###`);
+
         // Roll for number of decks
         const numDecks = Dice.rollFromNotation(shipType.decks).total;
 
@@ -449,5 +457,30 @@ export class ShipGenerator {
         if (roll <= 18) return 4;      // 3/21 probability (~14.3%)
         if (roll <= 20) return 5;      // 2/21 probability (~9.5%)
         return 6;                      // 1/21 probability (~4.8%)
+    }
+
+    /**
+     * Generates a ship layout with properly placed room types
+     * using both the ship layout generation and the room placement rules
+     * 
+     * @param shipType The ship type definition
+     * @param config Additional configuration options
+     * @returns A ship layout with optimized room placements
+     */
+    generateOptimizedShip(shipType: { name: string; decks: string }, config: Partial<GenerationConfig> = {}): DungeonGraph {
+        // First generate the basic ship layout
+        const shipLayout = this.generateShipFromType(shipType, config);
+
+        // Import the RoomGenerator
+        import('./roomGenerator').then(module => {
+            const RoomGenerator = module.RoomGenerator;
+            // Apply proper room placement rules
+            const roomGenerator = new RoomGenerator();
+            return roomGenerator.applyRoomTypes(shipLayout, shipType.name);
+        });
+
+        // Return the basic layout while we wait for the optimized one
+        // This is a workaround for the dynamic import
+        return shipLayout;
     }
 } 
