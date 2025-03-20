@@ -223,7 +223,6 @@ export class RoomAssigner {
      * @returns A randomly selected room type based on the ship's typical distribution
      */
     static getRandomRoomType(shipType: string): RoomType {
-        console.log(`### ROOM ASSIGNER: Selecting random room type for ${shipType} ###`);
 
         // Get the room distribution for this ship type, or use default if not found
         const distribution = ROOM_DISTRIBUTIONS[shipType] || ROOM_DISTRIBUTIONS["Default"];
@@ -271,7 +270,6 @@ export class RoomAssigner {
             RoomType.LIFE_SUPPORT
         ]
     ): RoomType[] {
-        console.log(`\n### ROOM ASSIGNER: Assigning ${roomCount} room types for ${shipType} ###`);
 
         const roomTypes: RoomType[] = [];
 
@@ -295,14 +293,12 @@ export class RoomAssigner {
 
             // Skip this room type if it's supposed to be unique and already exists
             if (uniqueRoomTypes.includes(newType) && roomTypes.includes(newType)) {
-                console.log(`### ROOM ASSIGNER: Skipping duplicate unique room type: ${newType} ###`);
                 continue;
             }
 
             roomTypes.push(newType);
         }
 
-        console.log(`### FINISHED room type assignment: ${roomTypes.length} rooms assigned ###`);
         return roomTypes;
     }
 } 

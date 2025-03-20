@@ -38,7 +38,6 @@ export class ShipGenerator {
         // Generate a name based on room type if available
         const roomName = roomType ? `${roomType} ${id}` : `Room ${id}`;
 
-        console.log(`### SHIP GENERATOR: Created ROOM ID ${id} at position (${x},${y})${roomType ? ' with type ' + roomType : ''} ###`);
 
         return {
             id: id,
@@ -69,7 +68,6 @@ export class ShipGenerator {
         target: RoomNode,
         type: 'door' | 'secondary'
     ): RoomLink {
-        console.log(`### SHIP GENERATOR: Created ${type} link between ROOM ID ${source.id} and ROOM ID ${target.id} ###`);
         return { source, target, type };
     }
 
@@ -93,7 +91,6 @@ export class ShipGenerator {
      * Generates a ship layout based on configuration
      */
     generate(config: GenerationConfig): DungeonGraph {
-        console.log("\n### SHIP GENERATOR: Starting ship generation ###");
 
         const {
             numRooms,
@@ -112,7 +109,6 @@ export class ShipGenerator {
 
         // Pre-generate room types based on the ship type
         this.roomTypes = RoomAssigner.assignRoomTypesForShip(this.shipTypeName, numRooms);
-        console.log(`### Room types pre-generated for ${this.shipTypeName} ###`);
 
         // Store ship dimensions - height is still dynamic, width is fixed at 11
         // this.shipWidth is now defined as a fixed 11 cells at class level
@@ -374,7 +370,6 @@ export class ShipGenerator {
      * and generates rooms for each deck.
      */
     generateShipFromType(shipType: { name: string; decks: string }, config: Partial<GenerationConfig> = {}): DungeonGraph {
-        console.log(`\n### GENERATING SHIP FROM TYPE: ${shipType.name} ###`);
 
         // Roll for number of decks
         const numDecks = Dice.rollFromNotation(shipType.decks).total;
@@ -407,12 +402,6 @@ export class ShipGenerator {
             // Fixed number of rooms per deck
             totalRooms = numDecks * (config.roomsPerDeck || defaultRoomsPerDeck);
         }
-
-        const roomCountDescription = shouldRandomize
-            ? `weighted (1-6) ${roomsPerDeckArray.join(', ')} rooms per deck`
-            : `${config.roomsPerDeck || defaultRoomsPerDeck} room(s) per deck`;
-
-        console.log(`Generating ship with ${numDecks} decks, ${roomCountDescription} (${totalRooms} total rooms)`);
 
         // Since ship width is now fixed at 11 cells, we use that value directly
         // to calculate dungeonWidth based on the cell size

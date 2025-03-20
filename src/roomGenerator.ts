@@ -15,7 +15,6 @@ export class RoomGenerator {
     private cellSize: number;
 
     constructor() {
-        console.log("\n### ROOM GENERATOR: Created new instance ###");
         this.cellSize = DUNGEON_CONSTANTS.CELL_SIZE;
     }
 
@@ -27,7 +26,6 @@ export class RoomGenerator {
      * @returns The updated ship layout with room types assigned
      */
     applyRoomTypes(shipGraph: DungeonGraph, shipType: string): DungeonGraph {
-        console.log(`\n### ROOM GENERATOR: Starting room type assignment for ${shipType} ###`);
 
         // Create a working copy of the graph to avoid modifying the original
         const workingGraph: DungeonGraph = {
@@ -37,7 +35,6 @@ export class RoomGenerator {
 
         // Calculate the total number of decks
         const totalDecks = this.calculateTotalDecks(workingGraph);
-        console.log(`### ROOM GENERATOR: Ship has ${totalDecks} decks and ${workingGraph.rooms.length} rooms ###`);
 
         // First, generate candidate room types based on ship type
         const roomTypes = RoomAssigner.assignRoomTypesForShip(
@@ -45,13 +42,11 @@ export class RoomGenerator {
             workingGraph.rooms.length
         );
 
-        console.log(`### ROOM GENERATOR: Generated candidate room types for ${shipType} ###`);
         const typeCounts: Record<string, number> = {};
         roomTypes.forEach(type => {
             typeCounts[type] = (typeCounts[type] || 0) + 1;
         });
         Object.entries(typeCounts).forEach(([type, count]) => {
-            console.log(`   - ${type}: ${count}`);
         });
 
         // Create a map to store the best room type for each room position
@@ -68,12 +63,10 @@ export class RoomGenerator {
 
         // Find adjacent rooms for each room
         const adjacencyMap = this.buildAdjacencyMap(workingGraph);
-        console.log(`### ROOM GENERATOR: Built adjacency map with ${workingGraph.links.length} connections ###`);
 
         // Score each possible room type for each position
         // Start with guaranteed rooms (COMMAND, ENGINE, LIFE_SUPPORT)
         const guaranteedTypes = [RoomType.COMMAND, RoomType.ENGINE, RoomType.LIFE_SUPPORT];
-        console.log(`\n### ROOM GENERATOR: Assigning guaranteed room types: ${guaranteedTypes.join(', ')} ###`);
 
         this.assignGuaranteedRooms(
             guaranteedTypes,
@@ -85,18 +78,12 @@ export class RoomGenerator {
         );
 
         // Log guaranteed room assignments
-        console.log(`### ROOM GENERATOR: Guaranteed room assignments complete ###`);
         guaranteedTypes.forEach(type => {
             const roomId = [...roomTypeAssignments.entries()]
                 .find(([, roomType]) => roomType === type)?.[0];
 
             if (roomId !== undefined) {
                 const pos = roomPositions.find(p => p.id === roomId);
-                if (pos) {
-                    console.log(`   - ${type} assigned to Room ${roomId} at position (${pos.x},${pos.y})`);
-                }
-            } else {
-                console.log(`   - ❌ Failed to assign ${type}`);
             }
         });
 
@@ -109,7 +96,6 @@ export class RoomGenerator {
             !roomTypeAssignments.has(pos.id)
         );
 
-        console.log(`\n### ROOM GENERATOR: Assigning ${remainingRoomTypes.length} remaining room types to ${remainingPositions.length} positions ###`);
 
         // Assign remaining room types based on optimal placement
         this.assignRemainingRooms(
@@ -121,7 +107,6 @@ export class RoomGenerator {
             adjacencyMap
         );
 
-        console.log(`### ROOM GENERATOR: All room types assigned successfully! ###`);
 
         // Apply the room type assignments to the working graph
         workingGraph.rooms = workingGraph.rooms.map(room => {
@@ -137,7 +122,6 @@ export class RoomGenerator {
             return room;
         });
 
-        console.log(`### ROOM GENERATOR: Finished applying room types to ${shipType} ###`);
         return workingGraph;
     }
 
@@ -202,7 +186,6 @@ export class RoomGenerator {
         adjacencyMap: Map<number, number[]>
     ): void {
         for (const roomType of guaranteedTypes) {
-            console.log(`   ### Finding optimal position for ${roomType}...`);
 
             // Score each position for this room type
             const scoredPositions = roomPositions
@@ -251,9 +234,7 @@ export class RoomGenerator {
             if (scoredPositions.length > 0) {
                 const bestPosition = scoredPositions[0];
                 assignments.set(bestPosition.id, roomType);
-                console.log(`   ### ROOM ID ${bestPosition.id}: ${roomType} assigned to position (${bestPosition.x},${bestPosition.y}) with score ${bestPosition.score} (deck: ${bestPosition.deckScore}, adjacency: ${bestPosition.adjacencyScore})`);
             } else {
-                console.log(`   ### No position available for ${roomType}`);
             }
         }
     }
@@ -276,7 +257,6 @@ export class RoomGenerator {
         // For each remaining room type
         for (const roomType of remainingTypes) {
             if (availablePositions.length === 0) {
-                console.log(`   ### No positions left for ${roomType}`);
                 break;
             }
 
@@ -328,7 +308,6 @@ export class RoomGenerator {
                 assignedTypeCount++;
 
                 // Log all room assignments with their IDs - always log, not just high scoring ones
-                console.log(`   ### ROOM ID ${bestPosition.id}: ${roomType} → position (${bestPosition.x},${bestPosition.y}) with score ${bestPosition.score} (deck: ${bestPosition.deckScore}, adjacency: ${bestPosition.adjacencyScore})`);
 
                 // Remove this position from available positions
                 const index = availablePositions.findIndex(
@@ -341,6 +320,5 @@ export class RoomGenerator {
         }
 
         // Log how many positions were filled
-        console.log(`   ### Assigned ${assignedTypeCount} of ${remainingTypes.length} remaining room types`);
     }
 } 
